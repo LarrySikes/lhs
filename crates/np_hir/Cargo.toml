@@ -1,0 +1,7 @@
+[package]
+name = "np_hir"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+np_syntax = { path = "../np_syntax" }

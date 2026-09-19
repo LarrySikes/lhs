@@ -1,0 +1,6 @@
+[package]
+name = "np_syntax"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
