@@ -16,7 +16,7 @@ pub fn emit_c(program: &Program) -> Result<String, EmitError> {
         });
     }
 
-    let mut fns: Vec<&FnItem> = program
+    let fns: Vec<&FnItem> = program
         .items
         .iter()
         .filter_map(|i| match i {
@@ -120,8 +120,34 @@ fn emit_fn(out: &mut String, f: &FnItem) -> Result<(), EmitError> {
     for p in &f.params {
         let _ = writeln!(out, "    env_set(e, \"{}\", a_{});", p.name, p.name);
     }
-    emit_block(out, &f.body, 1)?;
-    out.push_str("    return V_unit();\n}\n\n");
+    let stmts = &f.body.stmts;
+    if let Some((last, rest)) = stmts.split_last() {
+        for stmt in rest {
+            emit_stmt(out, stmt, 1)?;
+        }
+        match last {
+            Stmt::Expr(e) => {
+                out.push_str("    return ");
+                emit_expr(out, e)?;
+                out.push_str(";\n");
+            }
+            Stmt::Return { value, .. } => {
+                out.push_str("    return ");
+                match value {
+                    Some(v) => emit_expr(out, v)?,
+                    None => out.push_str("V_unit()"),
+                }
+                out.push_str(";\n");
+            }
+            other => {
+                emit_stmt(out, other, 1)?;
+                out.push_str("    return V_unit();\n");
+            }
+        }
+    } else {
+        out.push_str("    return V_unit();\n");
+    }
+    out.push_str("}\n\n");
     Ok(())
 }
 
