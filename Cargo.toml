@@ -4,6 +4,7 @@ members = [
     "crates/npc",
     "crates/np_syntax",
     "crates/np_hir",
+    "crates/np_eval",
 ]
 
 [workspace.package]

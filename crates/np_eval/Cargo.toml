@@ -1,0 +1,7 @@
+[package]
+name = "np_eval"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+np_syntax = { path = "../np_syntax" }

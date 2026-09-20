@@ -3,6 +3,7 @@ use std::fs;
 use std::path::Path;
 use std::process;
 
+use np_eval::run_program_stdout;
 use np_hir::{check, Diagnostic};
 use serde::Serialize;
 
@@ -20,10 +21,10 @@ fn usage() -> ! {
         "npc — newproj compiler\n\n\
          Usage:\n\
            npc check [--json] <file.np>\n\
-           npc run <file.np>     (not implemented)\n\
+           npc run <file.np>\n\
            npc fmt <file.np>     (not implemented)\n\
            npc test              (run `cargo test` in the workspace)\n\n\
-         The compiler binary is `npc`. The language name is still TBD.\n"
+         The compiler binary is `npc` (Rust). Language name TBD.\n"
     );
     process::exit(2);
 }
@@ -44,6 +45,24 @@ fn print_diag(d: &Diagnostic, json: bool) {
             eprintln!("  help: {h}");
         }
     }
+}
+
+fn load_ok(path: &Path) -> Option<np_hir::Module> {
+    let text = match fs::read_to_string(path) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("npc: cannot read {}: {e}", path.display());
+            return None;
+        }
+    };
+    let (module, diags) = check(&path.display().to_string(), text);
+    for d in &diags {
+        print_diag(d, false);
+    }
+    if !diags.is_empty() {
+        return None;
+    }
+    module
 }
 
 fn cmd_check(path: &Path, json: bool) -> i32 {
@@ -73,6 +92,19 @@ fn cmd_check(path: &Path, json: bool) -> i32 {
     }
 }
 
+fn cmd_run(path: &Path) -> i32 {
+    let Some(module) = load_ok(path) else {
+        return 1;
+    };
+    match run_program_stdout(&module.program) {
+        Ok(_) => 0,
+        Err(e) => {
+            eprintln!("npc: runtime error: {e}");
+            1
+        }
+    }
+}
+
 fn main() {
     let mut args: Vec<String> = env::args().skip(1).collect();
     if args.is_empty() {
@@ -96,8 +128,14 @@ fn main() {
             let Some(file) = file else { usage() };
             process::exit(cmd_check(Path::new(&file), json));
         }
-        "run" | "fmt" => {
-            eprintln!("npc: `{cmd}` not implemented yet");
+        "run" => {
+            let Some(file) = args.into_iter().next() else {
+                usage();
+            };
+            process::exit(cmd_run(Path::new(&file)));
+        }
+        "fmt" => {
+            eprintln!("npc: `fmt` not implemented yet");
             process::exit(1);
         }
         "test" => {

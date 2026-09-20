@@ -81,6 +81,8 @@ pub enum TokenKind {
 pub struct Token {
     pub kind: TokenKind,
     pub span: Span,
+    /// True if whitespace before this token contained a newline (for ASI).
+    pub newline_before: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,12 +131,18 @@ impl<'a> Lexer<'a> {
         Some(c)
     }
 
-    fn skip_ws_and_comments(&mut self) {
+    /// Skip whitespace/comments. Returns whether a newline was skipped.
+    fn skip_ws_and_comments(&mut self) -> bool {
+        let mut saw_nl = false;
         loop {
             while matches!(self.peek(), Some(b' ' | b'\t' | b'\n' | b'\r')) {
+                if matches!(self.peek(), Some(b'\n' | b'\r')) {
+                    saw_nl = true;
+                }
                 self.bump();
             }
             if self.peek() == Some(b'#') {
+                saw_nl = true;
                 while let Some(c) = self.bump() {
                     if c == b'\n' {
                         break;
@@ -143,6 +151,7 @@ impl<'a> Lexer<'a> {
                 continue;
             }
             if self.peek() == Some(b'/') && self.bytes.get(self.pos + 1) == Some(&b'/') {
+                saw_nl = true;
                 self.bump();
                 self.bump();
                 while let Some(c) = self.bump() {
@@ -154,6 +163,7 @@ impl<'a> Lexer<'a> {
             }
             break;
         }
+        saw_nl
     }
 
     fn read_string_body(&mut self, start: usize) -> Result<String, Diagnostic> {
@@ -179,12 +189,13 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn next_token(&mut self) -> Result<Token, Diagnostic> {
-        self.skip_ws_and_comments();
+        let newline_before = self.skip_ws_and_comments();
         let start = self.pos;
         let Some(c) = self.bump() else {
             return Ok(Token {
                 kind: TokenKind::Eof,
                 span: Span::new(start, start),
+                newline_before,
             });
         };
 
@@ -335,6 +346,7 @@ impl<'a> Lexer<'a> {
         Ok(Token {
             kind,
             span: Span::new(start, self.pos),
+            newline_before,
         })
     }
 
@@ -1208,7 +1220,9 @@ impl Parser {
     fn parse_postfix(&mut self) -> Result<Expr, Diagnostic> {
         let mut expr = self.parse_primary()?;
         loop {
-            if self.at(&TokenKind::LParen) {
+            // ASI: newline before `(` or `[` ends the expression (so
+            // `other.y\n(dx*dx...).sqrt()` is two statements, not a call).
+            if self.at(&TokenKind::LParen) && !self.peek().newline_before {
                 self.bump();
                 let mut args = Vec::new();
                 if !self.at(&TokenKind::RParen) {
@@ -1228,7 +1242,7 @@ impl Parser {
                     args,
                     span,
                 };
-            } else if self.at(&TokenKind::LBracket) {
+            } else if self.at(&TokenKind::LBracket) && !self.peek().newline_before {
                 self.bump();
                 let index = self.parse_expr()?;
                 let end = self.expect_punct(TokenKind::RBracket)?.span.end;
@@ -1238,7 +1252,7 @@ impl Parser {
                     index: Box::new(index),
                     span,
                 };
-            } else if self.at(&TokenKind::Dot) {
+            } else if self.at(&TokenKind::Dot) && !self.peek().newline_before {
                 self.bump();
                 let name_tok = self.bump();
                 let name = match name_tok.kind {

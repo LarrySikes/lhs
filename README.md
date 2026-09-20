@@ -9,7 +9,8 @@ This is **not** a fork of IWBasic. Lessons from `iwbc` (ship a compiler + runtim
 
 ## Status
 
-Lexer + parser for `fn` / `let` / calls / literals. `npc check` parses `.np` files and reports syntax (and a few stub type) errors.
+Lexer + parser for the `examples/` grammar. `npc check` reports syntax/type stub
+errors. `npc run` executes via a tree-walking interpreter (Cranelift/LLVM later).
 
 ## Quick start (once the compiler exists)
 
@@ -23,9 +24,10 @@ cargo test
 
 | Path | Purpose |
 |------|---------|
-| `crates/npc/src/main.rs` | CLI entry (`npc check`) |
+| `crates/npc/src/main.rs` | CLI entry (`npc check` / `npc run`) |
 | `crates/np_syntax/src/lib.rs` | Lexer, parser, AST |
 | `crates/np_hir/src/lib.rs` | Early checks / typed IR |
+| `crates/np_eval/src/lib.rs` | Tree-walking interpreter (`npc run`) |
 
 Absolute path on this machine: `/home/iwlnx/src/newproj/crates/`
 

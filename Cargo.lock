@@ -15,6 +15,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
+name = "np_eval"
+version = "0.0.1"
+dependencies = [
+ "np_syntax",
+]
+
+[[package]]
 name = "np_hir"
 version = "0.0.1"
 dependencies = [
@@ -29,6 +36,7 @@ version = "0.0.1"
 name = "npc"
 version = "0.0.1"
 dependencies = [
+ "np_eval",
  "np_hir",
  "np_syntax",
  "serde",
