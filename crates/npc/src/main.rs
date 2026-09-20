@@ -20,14 +20,14 @@ struct JsonDiag<'a> {
 
 fn usage() -> ! {
     eprintln!(
-        "npc — newproj compiler v0.1\n\n\
+        "lhsc — LHS compiler v0.1\n\n\
          Usage:\n\
-           npc check [--json] <file.np>\n\
-           npc run <file.np>\n\
-           npc fmt [--write] <file.np>\n\
-           npc test [examples_dir]\n\
-           npc build <file.np> [-o outfile]   (simple subset → native via cc)\n\n\
-         Compiler is Rust (`npc`). Language name TBD.\n"
+           lhsc check [--json] <file.lhs>\n\
+           lhsc run <file.lhs>\n\
+           lhsc fmt [--write] <file.lhs>\n\
+           lhsc test [examples_dir]\n\
+           lhsc build <file.lhs> [-o outfile]   (simple subset → native via cc)\n\n\
+         Language: LHS. Compiler implemented in Rust.\n"
     );
     process::exit(2);
 }
@@ -54,7 +54,7 @@ fn load_ok(path: &Path) -> Option<np_hir::Module> {
     let text = match fs::read_to_string(path) {
         Ok(t) => t,
         Err(e) => {
-            eprintln!("npc: cannot read {}: {e}", path.display());
+            eprintln!("lhsc: cannot read {}: {e}", path.display());
             return None;
         }
     };
@@ -72,7 +72,7 @@ fn cmd_check(path: &Path, json: bool) -> i32 {
     let text = match fs::read_to_string(path) {
         Ok(t) => t,
         Err(e) => {
-            eprintln!("npc: cannot read {}: {e}", path.display());
+            eprintln!("lhsc: cannot read {}: {e}", path.display());
             return 1;
         }
     };
@@ -84,7 +84,7 @@ fn cmd_check(path: &Path, json: bool) -> i32 {
         if !json {
             if let Some(m) = module {
                 let n = m.program.items.len();
-                eprintln!("npc: ok ({n} item{})", if n == 1 { "" } else { "s" });
+                eprintln!("lhsc: ok ({n} item{})", if n == 1 { "" } else { "s" });
             }
         }
         0
@@ -100,7 +100,7 @@ fn cmd_run(path: &Path) -> i32 {
     match run_program_stdout(&module.program) {
         Ok(_) => 0,
         Err(e) => {
-            eprintln!("npc: runtime error: {e}");
+            eprintln!("lhsc: runtime error: {e}");
             1
         }
     }
@@ -110,12 +110,11 @@ fn cmd_fmt(path: &Path, write: bool) -> i32 {
     let text = match fs::read_to_string(path) {
         Ok(t) => t,
         Err(e) => {
-            eprintln!("npc: cannot read {}: {e}", path.display());
+            eprintln!("lhsc: cannot read {}: {e}", path.display());
             return 1;
         }
     };
     let (module, diags) = check(&path.display().to_string(), text);
-    // fmt even with type errors if parse succeeded
     let Some(module) = module else {
         for d in &diags {
             print_diag(d, false);
@@ -125,10 +124,10 @@ fn cmd_fmt(path: &Path, write: bool) -> i32 {
     let formatted = format_program(&module.program);
     if write {
         if let Err(e) = fs::write(path, formatted) {
-            eprintln!("npc: write failed: {e}");
+            eprintln!("lhsc: write failed: {e}");
             return 1;
         }
-        eprintln!("npc: wrote {}", path.display());
+        eprintln!("lhsc: wrote {}", path.display());
     } else {
         print!("{formatted}");
     }
@@ -140,10 +139,15 @@ fn cmd_test(dir: &Path) -> i32 {
         Ok(rd) => rd
             .filter_map(|e| e.ok())
             .map(|e| e.path())
-            .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("np"))
+            .filter(|p| {
+                matches!(
+                    p.extension().and_then(|s| s.to_str()),
+                    Some("lhs") | Some("np")
+                )
+            })
             .collect(),
         Err(e) => {
-            eprintln!("npc: cannot read {}: {e}", dir.display());
+            eprintln!("lhsc: cannot read {}: {e}", dir.display());
             return 1;
         }
     };
@@ -186,7 +190,7 @@ fn cmd_test(dir: &Path) -> i32 {
             }
         }
     }
-    eprintln!("npc test: {pass} passed, {fail} failed");
+    eprintln!("lhsc test: {pass} passed, {fail} failed");
     if fail == 0 {
         0
     } else {
@@ -201,17 +205,20 @@ fn cmd_build(path: &Path, out: &Path) -> i32 {
     match emit_c(&module.program) {
         Ok(c) => match compile_c_to_binary(&c, &out.display().to_string()) {
             Ok(()) => {
-                eprintln!("npc: built {}", out.display());
+                eprintln!("lhsc: built {}", out.display());
                 0
             }
             Err(e) => {
-                eprintln!("npc: link failed: {}", e.message);
+                eprintln!("lhsc: link failed: {}", e.message);
                 1
             }
         },
         Err(e) => {
-            eprintln!("npc: build: {}", e.message);
-            eprintln!("npc: tip: use `npc run {}` for full language support", path.display());
+            eprintln!("lhsc: build: {}", e.message);
+            eprintln!(
+                "lhsc: tip: use `lhsc run {}` for full language support",
+                path.display()
+            );
             1
         }
     }
@@ -231,7 +238,7 @@ fn main() {
                 if a == "--json" {
                     json = true;
                 } else if a.starts_with('-') {
-                    eprintln!("npc: unknown flag {a}");
+                    eprintln!("lhsc: unknown flag {a}");
                     usage();
                 } else {
                     file = Some(a);
@@ -293,7 +300,7 @@ fn main() {
         }
         "-h" | "--help" | "help" => usage(),
         other => {
-            eprintln!("npc: unknown command `{other}`");
+            eprintln!("lhsc: unknown command `{other}`");
             usage();
         }
     }

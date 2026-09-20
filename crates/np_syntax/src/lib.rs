@@ -1,10 +1,10 @@
-//! Lexer and parser for `.np` source. Spec = `examples/`.
+//! Lexer and parser for `.lhs` source. Spec = `examples/`.
 //!
 //! Compiler layout:
 //! - `crates/np_syntax` — this crate (tokens + AST + parse + fmt)
 //! - `crates/np_hir` — type checking
-//! - `crates/np_eval` — interpreter (`npc run`)
-//! - `crates/npc` — CLI (`npc check`)
+//! - `crates/np_eval` — interpreter (`lhsc run`)
+//! - `crates/npc` — CLI (`lhsc check`)
 
 pub mod format;
 pub use format::format_program;
@@ -1587,41 +1587,41 @@ mod tests {
 
     #[test]
     fn parses_hello() {
-        let src = r#"fn main() { print("hello, newproj") }"#;
-        let (_f, prog) = parse_file("t.np", src.into()).unwrap();
+        let src = r#"fn main() { print("hello, LHS") }"#;
+        let (_f, prog) = parse_file("t.lhs", src.into()).unwrap();
         assert_eq!(prog.items.len(), 1);
     }
 
     #[test]
     fn parses_option_match() {
         let src = std::fs::read_to_string(
-            concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/03_option_match.np"),
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/03_option_match.lhs"),
         )
         .unwrap();
-        parse_file("03.np", src).unwrap();
+        parse_file("03.lhs", src).unwrap();
     }
 
     #[test]
     fn parses_adt() {
         let src = std::fs::read_to_string(
-            concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/05_adt.np"),
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/05_adt.lhs"),
         )
         .unwrap();
-        parse_file("05.np", src).unwrap();
+        parse_file("05.lhs", src).unwrap();
     }
 
     #[test]
     fn parses_c_abi() {
         let src = std::fs::read_to_string(
-            concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/09_c_abi.np"),
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/09_c_abi.lhs"),
         )
         .unwrap();
-        parse_file("09.np", src).unwrap();
+        parse_file("09.lhs", src).unwrap();
     }
 
     #[test]
     fn rejects_bad_token() {
-        let err = parse_file("x.np", "fn main() { @ }".into()).unwrap_err();
+        let err = parse_file("x.lhs", "fn main() { @ }".into()).unwrap_err();
         assert_eq!(err.code, "E0002");
     }
 }

@@ -34,7 +34,7 @@ tasks (message or immutable share).
 
 ## D5 — Backend
 
-**Decision (v0.1):** `npc run` uses a tree-walking interpreter; `npc build`
+**Decision (v0.1):** `lhsc run` uses a tree-walking interpreter; `lhsc build`
 emits C + `cc` for a **simple subset** (main/let/print/literals).  
 **Next:** Cranelift JIT/AOT for the full language (original D5 intent).  
 **Why ship this way:** get a complete check/run/test/fmt loop and a native
@@ -54,5 +54,6 @@ language is worth embedding.
 
 ## D8 — Name
 
-**Decision:** deferred. Repo is `newproj`; CLI binary is `npc`
-("newproj compiler") until a public name is chosen.
+**Decision:** The language is **LHS**. Source extension is **`.lhs`**.
+CLI binary is **`lhsc`** (LHS compiler). Repo directory may remain `newproj`.  
+**Why:** Chosen 2026-09-20; replaces the deferred working title.

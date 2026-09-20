@@ -1,5 +1,5 @@
 # 01 — hello
 
 fn main() {
-    print("hello, newproj")
+    print("hello, LHS")
 }

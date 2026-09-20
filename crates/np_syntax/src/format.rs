@@ -1,4 +1,4 @@
-//! Pretty-printer for `.np` AST (`npc fmt`).
+//! Pretty-printer for `.lhs` AST (`lhsc fmt`).
 
 use crate::{
     BinOp, Block, Expr, FnItem, Item, Pat, Program, Stmt, TypeBody, TypeItem, TypeRef,

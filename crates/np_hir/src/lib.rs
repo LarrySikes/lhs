@@ -1,4 +1,4 @@
-//! Name resolution + type checking for `.np` programs.
+//! Name resolution + type checking for `.lhs` programs.
 
 use std::collections::HashMap;
 

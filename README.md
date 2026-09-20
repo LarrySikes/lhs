@@ -1,36 +1,39 @@
-# newproj (working title) — v0.1
+# LHS — v0.1
 
-A small, memory-safe-oriented language with a Rust-hosted toolchain (`npc`).
+**LHS** is a small, memory-safe-oriented language with a Rust-hosted toolchain.
 
-**Compiler binary: `npc`.** Language name still TBD.
+**Compiler:** `lhsc` (LHS compiler).  
+**Source files:** `.lhs`
 
 ## Commands
 
 ```bash
-cargo run -p npc -- check examples/01_hello.np
-cargo run -p npc -- run examples/01_hello.np
-cargo run -p npc -- fmt examples/01_hello.np
-cargo run -p npc -- test examples
-cargo run -p npc -- build examples/01_hello.np -o /tmp/np_hello
+cargo run -p npc --bin lhsc -- check examples/01_hello.lhs
+cargo run -p npc --bin lhsc -- run examples/01_hello.lhs
+cargo run -p npc --bin lhsc -- fmt examples/01_hello.lhs
+cargo run -p npc --bin lhsc -- test examples
+cargo run -p npc --bin lhsc -- build examples/01_hello.lhs -o /tmp/lhs_hello
 ```
+
+(After `cargo install --path crates/npc`, just use `lhsc`.)
 
 ## Compiler source
 
 | Path | Role |
 |------|------|
-| `crates/npc` | CLI |
+| `crates/npc` | CLI (`lhsc`) |
 | `crates/np_syntax` | Lexer, parser, AST, formatter |
 | `crates/np_hir` | Type checker |
 | `crates/np_eval` | Interpreter (`run`) |
 | `crates/np_codegen` | C subset emitter (`build`) |
 
-Absolute path: `/home/iwlnx/src/newproj/crates/`
+Repo path: `/home/iwlnx/src/newproj/`
 
-## v0.1 status
+## Status
 
 - [x] Parse `examples/`
 - [x] Typecheck (JSON diagnostics)
-- [x] `npc run` interpreter (Option/Result/match/tasks/file I/O)
-- [x] `npc fmt` / `npc test`
-- [x] `npc build` → native binary for simple main/print programs
-- [ ] Cranelift backend for full language (see DECISIONS D5)
+- [x] `lhsc run` interpreter
+- [x] `lhsc fmt` / `lhsc test`
+- [x] `lhsc build` → native binary for simple programs
+- [ ] Cranelift backend for full language

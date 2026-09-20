@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [[bin]]
-name = "npc"
+name = "lhsc"
 path = "src/main.rs"
 
 [dependencies]

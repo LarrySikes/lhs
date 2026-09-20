@@ -1,4 +1,4 @@
-//! Tree-walking interpreter for `.np` programs (MVP before native codegen).
+//! Tree-walking interpreter for `.lhs` programs (MVP before native codegen).
 
 use std::collections::HashMap;
 use std::fmt;
@@ -520,7 +520,7 @@ mod tests {
     use np_syntax::{parse_file, Item, Stmt};
 
     fn run_src(src: &str) -> String {
-        let (_f, prog) = parse_file("t.np", src.into()).unwrap();
+        let (_f, prog) = parse_file("t.lhs", src.into()).unwrap();
         let mut buf = Vec::new();
         run_program(&prog, &mut buf).unwrap();
         String::from_utf8(buf).unwrap()
@@ -528,8 +528,8 @@ mod tests {
 
     #[test]
     fn hello() {
-        let out = run_src(r#"fn main() { print("hello, newproj") }"#);
-        assert_eq!(out, "hello, newproj\n");
+        let out = run_src(r#"fn main() { print("hello, LHS") }"#);
+        assert_eq!(out, "hello, LHS\n");
     }
 
     #[test]
@@ -551,10 +551,10 @@ fn main() {
     fn point_dist() {
         let src = std::fs::read_to_string(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../examples/06_struct_method.np"
+            "/../../examples/06_struct_method.lhs"
         ))
         .unwrap();
-        let (_f, prog) = parse_file("06.np", src).unwrap();
+        let (_f, prog) = parse_file("06.lhs", src).unwrap();
         for item in &prog.items {
             if let Item::Fn(f) = item {
                 if f.name == "dist" {

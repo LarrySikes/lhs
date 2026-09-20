@@ -1,16 +1,16 @@
-# Manifesto — newproj language (working title)
+# Manifesto — LHS
 
 ## Problem
 
 Teams bounce between a high-productivity language (often Python) and a
 high-performance / memory-safe language (Rust, C, C++). That split costs
-rewrites, boundary bugs, and split tooling. We want one language that is
+rewrites, boundary bugs, and split tooling. LHS aims at one language that is
 pleasant day-to-day and trustworthy in production.
 
 ## North star
 
 - **Ease:** readable syntax, fast feedback, great errors.
-- **Performance:** native code (LLVM or Cranelift); predictable costs.
+- **Performance:** native code (C subset today; Cranelift/LLVM next); predictable costs.
 - **Safety:** no unchecked null; memory rules that prevent use-after-free
   and data races by construction (exact model: see DECISIONS.md).
 - **Concurrency:** structured tasks; parallelism is a first-class story,
@@ -30,9 +30,9 @@ pleasant day-to-day and trustworthy in production.
 
 A small language that:
 
-1. Runs `examples/` via `npc run`; simple programs also `npc build` to native (`cc`).
+1. Runs `examples/` via `lhsc run`; simple programs also `lhsc build` to native (`cc`).
 2. Has `Option` / `Result`, pattern matching, and no implicit null.
-3. Ships `npc check | run | test | fmt` with JSON diagnostics.
+3. Ships `lhsc check | run | test | fmt` with JSON diagnostics.
 4. Has one concurrency demo (structured spawn + join).
 5. Documents how AI agents should call the toolchain.
 
