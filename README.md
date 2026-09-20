@@ -19,6 +19,16 @@ cargo run -p npc -- run examples/01_hello.np
 cargo test
 ```
 
+## Compiler source
+
+| Path | Purpose |
+|------|---------|
+| `crates/npc/src/main.rs` | CLI entry (`npc check`) |
+| `crates/np_syntax/src/lib.rs` | Lexer, parser, AST |
+| `crates/np_hir/src/lib.rs` | Early checks / typed IR |
+
+Absolute path on this machine: `/home/iwlnx/src/newproj/crates/`
+
 ## Layout
 
 | Path | Purpose |
@@ -27,8 +37,8 @@ cargo test
 | `docs/DECISIONS.md` | Locked design choices |
 | `examples/` | Spec-by-example programs |
 | `crates/npc` | Compiler CLI (`npc`) |
-| `crates/np_syntax` | Lexer / parser (stub) |
-| `crates/np_hir` | Typed IR (stub) |
+| `crates/np_syntax` | Lexer / parser / AST |
+| `crates/np_hir` | Typed IR (early stub) |
 
 ## Related
 

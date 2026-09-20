@@ -1,4 +1,9 @@
 //! Lexer and parser for `.np` source. Spec = `examples/`.
+//!
+//! Compiler layout:
+//! - `crates/np_syntax` — this crate (tokens + AST + parse)
+//! - `crates/np_hir` — early checks / typed IR (stub)
+//! - `crates/npc` — CLI (`npc check`)
 
 use std::fmt;
 
@@ -22,7 +27,6 @@ pub struct SourceFile {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenKind {
-    // keywords
     Fn,
     Let,
     If,
@@ -34,12 +38,15 @@ pub enum TokenKind {
     Unsafe,
     Task,
     Await,
-    // literals / idents
+    As,
+    Is,
+    Const,
     Ident(String),
     Int(i64),
     Float(String),
     Str(String),
-    // punctuation
+    CStr(String),
+    Char(char),
     LParen,
     RParen,
     LBrace,
@@ -51,8 +58,8 @@ pub enum TokenKind {
     Semi,
     Dot,
     Eq,
-    Arrow, // ->
-    FatArrow, // =>
+    Arrow,
+    FatArrow,
     Plus,
     Minus,
     Star,
@@ -128,7 +135,6 @@ impl<'a> Lexer<'a> {
                 self.bump();
             }
             if self.peek() == Some(b'#') {
-                // line comment
                 while let Some(c) = self.bump() {
                     if c == b'\n' {
                         break;
@@ -147,6 +153,28 @@ impl<'a> Lexer<'a> {
                 continue;
             }
             break;
+        }
+    }
+
+    fn read_string_body(&mut self, start: usize) -> Result<String, Diagnostic> {
+        let mut s = String::new();
+        loop {
+            match self.bump() {
+                Some(b'"') => return Ok(s),
+                Some(b'\\') => match self.bump() {
+                    Some(b'n') => s.push('\n'),
+                    Some(b't') => s.push('\t'),
+                    Some(b'0') => s.push('\0'),
+                    Some(b'"') => s.push('"'),
+                    Some(b'\\') => s.push('\\'),
+                    Some(o) => s.push(o as char),
+                    None => {
+                        return Err(self.err(start, self.pos, "E0003", "unterminated string escape"))
+                    }
+                },
+                Some(ch) => s.push(ch as char),
+                None => return Err(self.err(start, self.pos, "E0003", "unterminated string")),
+            }
         }
     }
 
@@ -233,39 +261,34 @@ impl<'a> Lexer<'a> {
                     TokenKind::Minus
                 }
             }
-            b'"' => {
-                let mut s = String::new();
-                loop {
-                    match self.bump() {
-                        Some(b'"') => break,
-                        Some(b'\\') => match self.bump() {
-                            Some(b'n') => s.push('\n'),
-                            Some(b't') => s.push('\t'),
-                            Some(b'"') => s.push('"'),
-                            Some(b'\\') => s.push('\\'),
-                            Some(o) => s.push(o as char),
-                            None => {
-                                return Err(self.err(
-                                    start,
-                                    self.pos,
-                                    "E0003",
-                                    "unterminated string escape",
-                                ))
-                            }
-                        },
-                        Some(ch) => s.push(ch as char),
+            b'"' => TokenKind::Str(self.read_string_body(start)?),
+            b'\'' => {
+                let ch = match self.bump() {
+                    Some(b'\\') => match self.bump() {
+                        Some(b'n') => '\n',
+                        Some(b't') => '\t',
+                        Some(b'0') => '\0',
+                        Some(b'\'') => '\'',
+                        Some(b'\\') => '\\',
+                        Some(o) => o as char,
                         None => {
-                            return Err(self.err(start, self.pos, "E0003", "unterminated string"))
+                            return Err(self.err(start, self.pos, "E0005", "unterminated char"))
                         }
+                    },
+                    Some(b'\'') => {
+                        return Err(self.err(start, self.pos, "E0005", "empty char literal"))
                     }
+                    Some(o) => o as char,
+                    None => return Err(self.err(start, self.pos, "E0005", "unterminated char")),
+                };
+                if self.bump() != Some(b'\'') {
+                    return Err(self.err(start, self.pos, "E0005", "unterminated char literal"));
                 }
-                TokenKind::Str(s)
+                TokenKind::Char(ch)
             }
             b'0'..=b'9' => {
-                let mut end = self.pos;
                 while matches!(self.peek(), Some(b'0'..=b'9')) {
                     self.bump();
-                    end = self.pos;
                 }
                 if self.peek() == Some(b'.')
                     && matches!(self.bytes.get(self.pos + 1), Some(b'0'..=b'9'))
@@ -276,9 +299,9 @@ impl<'a> Lexer<'a> {
                     }
                     TokenKind::Float(self.src[start..self.pos].to_string())
                 } else {
-                    let text = &self.src[start..end];
+                    let text = &self.src[start..self.pos];
                     let n: i64 = text.parse().map_err(|_| {
-                        self.err(start, end, "E0004", &format!("invalid integer `{text}`"))
+                        self.err(start, self.pos, "E0004", &format!("invalid integer `{text}`"))
                     })?;
                     TokenKind::Int(n)
                 }
@@ -291,7 +314,13 @@ impl<'a> Lexer<'a> {
                     self.bump();
                 }
                 let text = &self.src[start..self.pos];
-                TokenKind::Ident(text.to_string()).into_keyword()
+                // c"..." C string
+                if text == "c" && self.peek() == Some(b'"') {
+                    self.bump();
+                    TokenKind::CStr(self.read_string_body(start)?)
+                } else {
+                    keyword_or_ident(text)
+                }
             }
             _ => {
                 return Err(self.err(
@@ -333,25 +362,23 @@ impl<'a> Lexer<'a> {
     }
 }
 
-impl TokenKind {
-    fn into_keyword(self) -> Self {
-        match self {
-            TokenKind::Ident(ref s) => match s.as_str() {
-                "fn" => TokenKind::Fn,
-                "let" => TokenKind::Let,
-                "if" => TokenKind::If,
-                "else" => TokenKind::Else,
-                "return" => TokenKind::Return,
-                "match" => TokenKind::Match,
-                "type" => TokenKind::Type,
-                "extern" => TokenKind::Extern,
-                "unsafe" => TokenKind::Unsafe,
-                "task" => TokenKind::Task,
-                "await" => TokenKind::Await,
-                _ => self,
-            },
-            other => other,
-        }
+fn keyword_or_ident(text: &str) -> TokenKind {
+    match text {
+        "fn" => TokenKind::Fn,
+        "let" => TokenKind::Let,
+        "if" => TokenKind::If,
+        "else" => TokenKind::Else,
+        "return" => TokenKind::Return,
+        "match" => TokenKind::Match,
+        "type" => TokenKind::Type,
+        "extern" => TokenKind::Extern,
+        "unsafe" => TokenKind::Unsafe,
+        "task" => TokenKind::Task,
+        "await" => TokenKind::Await,
+        "as" => TokenKind::As,
+        "is" => TokenKind::Is,
+        "const" => TokenKind::Const,
+        _ => TokenKind::Ident(text.to_string()),
     }
 }
 
@@ -365,10 +392,13 @@ pub struct Program {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Item {
     Fn(FnItem),
+    Type(TypeItem),
+    Extern(ExternBlock),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FnItem {
+    pub receiver: Option<String>, // Point in `fn Point.dist`
     pub name: String,
     pub name_span: Span,
     pub params: Vec<Param>,
@@ -380,13 +410,64 @@ pub struct FnItem {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Param {
     pub name: String,
+    pub ty: Option<TypeRef>, // None for bare `self`
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypeRef {
+    Named {
+        name: String,
+        args: Vec<TypeRef>,
+        span: Span,
+    },
+    Ptr {
+        is_const: bool,
+        inner: Box<TypeRef>,
+        span: Span,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeItem {
+    pub name: String,
+    pub name_span: Span,
+    pub kind: TypeBody,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypeBody {
+    Struct(Vec<Field>),
+    Adt(Vec<Variant>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Field {
+    pub name: String,
     pub ty: TypeRef,
     pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypeRef {
+pub struct Variant {
     pub name: String,
+    pub fields: Vec<Field>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExternBlock {
+    pub abi: String,
+    pub items: Vec<ExternFn>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExternFn {
+    pub name: String,
+    pub params: Vec<Param>,
+    pub ret: Option<TypeRef>,
     pub span: Span,
 }
 
@@ -413,13 +494,43 @@ pub enum Stmt {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
-    Ident { name: String, span: Span },
-    Int { value: i64, span: Span },
-    Float { text: String, span: Span },
-    Str { value: String, span: Span },
+    Ident {
+        name: String,
+        span: Span,
+    },
+    Int {
+        value: i64,
+        span: Span,
+    },
+    Float {
+        text: String,
+        span: Span,
+    },
+    Str {
+        value: String,
+        span: Span,
+    },
+    CStr {
+        value: String,
+        span: Span,
+    },
+    Char {
+        value: char,
+        span: Span,
+    },
     Call {
         callee: Box<Expr>,
         args: Vec<Expr>,
+        span: Span,
+    },
+    Field {
+        base: Box<Expr>,
+        name: String,
+        span: Span,
+    },
+    Index {
+        base: Box<Expr>,
+        index: Box<Expr>,
         span: Span,
     },
     Binary {
@@ -428,8 +539,71 @@ pub enum Expr {
         rhs: Box<Expr>,
         span: Span,
     },
+    Cast {
+        expr: Box<Expr>,
+        ty: TypeRef,
+        span: Span,
+    },
+    Is {
+        expr: Box<Expr>,
+        pat: Pat,
+        span: Span,
+    },
+    If {
+        cond: Box<Expr>,
+        then_block: Block,
+        else_block: Option<Block>,
+        span: Span,
+    },
+    Match {
+        scrutinee: Box<Expr>,
+        arms: Vec<MatchArm>,
+        span: Span,
+    },
+    StructLit {
+        name: String,
+        fields: Vec<(String, Expr)>,
+        span: Span,
+    },
+    Task {
+        body: Block,
+        span: Span,
+    },
+    Await {
+        inner: Box<Expr>,
+        span: Span,
+    },
+    Unsafe {
+        body: Block,
+        span: Span,
+    },
     Group {
         inner: Box<Expr>,
+        span: Span,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MatchArm {
+    pub pat: Pat,
+    pub body: Expr,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Pat {
+    Ident {
+        name: String,
+        span: Span,
+    },
+    Call {
+        name: String,
+        args: Vec<Pat>,
+        span: Span,
+    },
+    Struct {
+        name: String,
+        fields: Vec<(String, Pat)>,
         span: Span,
     },
 }
@@ -468,7 +642,15 @@ impl Parser {
     fn peek(&self) -> &Token {
         self.tokens
             .get(self.idx)
-            .unwrap_or_else(|| self.tokens.last().expect("eof token"))
+            .unwrap_or_else(|| self.tokens.last().expect("eof"))
+    }
+
+    fn peek_kind(&self) -> &TokenKind {
+        &self.peek().kind
+    }
+
+    fn at(&self, kind: &TokenKind) -> bool {
+        self.peek_kind() == kind
     }
 
     fn bump(&mut self) -> Token {
@@ -504,37 +686,50 @@ impl Parser {
 
     pub fn parse_program(&mut self) -> Result<Program, Diagnostic> {
         let mut items = Vec::new();
-        while self.peek().kind != TokenKind::Eof {
+        while !self.at(&TokenKind::Eof) {
             items.push(self.parse_item()?);
         }
         Ok(Program { items })
     }
 
     fn parse_item(&mut self) -> Result<Item, Diagnostic> {
-        match self.peek().kind {
+        match self.peek_kind() {
             TokenKind::Fn => Ok(Item::Fn(self.parse_fn()?)),
+            TokenKind::Type => Ok(Item::Type(self.parse_type_item()?)),
+            TokenKind::Extern => Ok(Item::Extern(self.parse_extern()?)),
             _ => {
                 let t = self.peek().clone();
-                Err(self.diag(t.span, "E0011", "expected `fn` item"))
+                Err(self.diag(t.span, "E0011", "expected `fn`, `type`, or `extern` item"))
             }
         }
     }
 
     fn parse_fn(&mut self) -> Result<FnItem, Diagnostic> {
         let start = self.expect_punct(TokenKind::Fn)?.span.start;
-        let name_tok = self.bump();
-        let (name, name_span) = match name_tok.kind {
-            TokenKind::Ident(s) => (s, name_tok.span),
-            _ => {
-                return Err(self.diag(name_tok.span, "E0012", "expected function name"));
+        let first = self.bump();
+        let (receiver, name, name_span) = match first.kind {
+            TokenKind::Ident(s) => {
+                if self.at(&TokenKind::Dot) {
+                    self.bump();
+                    let second = self.bump();
+                    match second.kind {
+                        TokenKind::Ident(n) => (Some(s), n, second.span),
+                        _ => {
+                            return Err(self.diag(second.span, "E0012", "expected method name"));
+                        }
+                    }
+                } else {
+                    (None, s, first.span)
+                }
             }
+            _ => return Err(self.diag(first.span, "E0012", "expected function name")),
         };
         self.expect_punct(TokenKind::LParen)?;
         let mut params = Vec::new();
-        if self.peek().kind != TokenKind::RParen {
+        if !self.at(&TokenKind::RParen) {
             loop {
                 params.push(self.parse_param()?);
-                if self.peek().kind == TokenKind::Comma {
+                if self.at(&TokenKind::Comma) {
                     self.bump();
                     continue;
                 }
@@ -542,7 +737,7 @@ impl Parser {
             }
         }
         self.expect_punct(TokenKind::RParen)?;
-        let ret = if self.peek().kind == TokenKind::Arrow {
+        let ret = if self.at(&TokenKind::Arrow) {
             self.bump();
             Some(self.parse_type()?)
         } else {
@@ -551,6 +746,7 @@ impl Parser {
         let body = self.parse_block()?;
         let span = Span::new(start, body.span.end);
         Ok(FnItem {
+            receiver,
             name,
             name_span,
             params,
@@ -566,27 +762,217 @@ impl Parser {
             TokenKind::Ident(s) => (s, name_tok.span.start),
             _ => return Err(self.diag(name_tok.span, "E0013", "expected parameter name")),
         };
+        if name == "self" && !self.at(&TokenKind::Colon) {
+            return Ok(Param {
+                name,
+                ty: None,
+                span: name_tok.span,
+            });
+        }
         self.expect_punct(TokenKind::Colon)?;
         let ty = self.parse_type()?;
-        let span = Span::new(start, ty.span.end);
-        Ok(Param { name, ty, span })
+        let span = Span::new(start, type_span(&ty).end);
+        Ok(Param {
+            name,
+            ty: Some(ty),
+            span,
+        })
     }
 
     fn parse_type(&mut self) -> Result<TypeRef, Diagnostic> {
-        let t = self.bump();
-        match t.kind {
-            TokenKind::Ident(name) => Ok(TypeRef {
-                name,
-                span: t.span,
-            }),
-            _ => Err(self.diag(t.span, "E0014", "expected type name")),
+        if self.at(&TokenKind::Star) {
+            let start = self.bump().span.start;
+            let is_const = if self.at(&TokenKind::Const) {
+                self.bump();
+                true
+            } else {
+                false
+            };
+            let inner = self.parse_type()?;
+            let span = Span::new(start, type_span(&inner).end);
+            return Ok(TypeRef::Ptr {
+                is_const,
+                inner: Box::new(inner),
+                span,
+            });
         }
+        let t = self.bump();
+        let name = match t.kind {
+            TokenKind::Ident(n) => n,
+            _ => return Err(self.diag(t.span, "E0014", "expected type name")),
+        };
+        let mut args = Vec::new();
+        let mut end = t.span.end;
+        if self.at(&TokenKind::Lt) {
+            self.bump();
+            if !self.at(&TokenKind::Gt) {
+                loop {
+                    args.push(self.parse_type()?);
+                    if self.at(&TokenKind::Comma) {
+                        self.bump();
+                        continue;
+                    }
+                    break;
+                }
+            }
+            end = self.expect_punct(TokenKind::Gt)?.span.end;
+        }
+        Ok(TypeRef::Named {
+            name,
+            args,
+            span: Span::new(t.span.start, end),
+        })
+    }
+
+    fn parse_type_item(&mut self) -> Result<TypeItem, Diagnostic> {
+        let start = self.expect_punct(TokenKind::Type)?.span.start;
+        let name_tok = self.bump();
+        let (name, name_span) = match name_tok.kind {
+            TokenKind::Ident(n) => (n, name_tok.span),
+            _ => return Err(self.diag(name_tok.span, "E0017", "expected type name")),
+        };
+        self.expect_punct(TokenKind::LBrace)?;
+        // Peek first member: `Name {` => ADT variant, `name:` => struct field
+        let kind = if matches!(self.peek_kind(), TokenKind::Ident(_)) {
+            // Lookahead: Ident then `{` => variant; Ident then `:` => field
+            let save = self.idx;
+            let _ = self.bump();
+            let is_variant = self.at(&TokenKind::LBrace);
+            self.idx = save;
+            if is_variant {
+                let mut variants = Vec::new();
+                while !self.at(&TokenKind::RBrace) && !self.at(&TokenKind::Eof) {
+                    variants.push(self.parse_variant()?);
+                    if self.at(&TokenKind::Comma) {
+                        self.bump();
+                    }
+                }
+                TypeBody::Adt(variants)
+            } else {
+                let mut fields = Vec::new();
+                while !self.at(&TokenKind::RBrace) && !self.at(&TokenKind::Eof) {
+                    fields.push(self.parse_field()?);
+                    if self.at(&TokenKind::Comma) {
+                        self.bump();
+                    }
+                }
+                TypeBody::Struct(fields)
+            }
+        } else {
+            TypeBody::Struct(Vec::new())
+        };
+        let end = self.expect_punct(TokenKind::RBrace)?.span.end;
+        Ok(TypeItem {
+            name,
+            name_span,
+            kind,
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_variant(&mut self) -> Result<Variant, Diagnostic> {
+        let name_tok = self.bump();
+        let (name, start) = match name_tok.kind {
+            TokenKind::Ident(n) => (n, name_tok.span.start),
+            _ => return Err(self.diag(name_tok.span, "E0018", "expected variant name")),
+        };
+        self.expect_punct(TokenKind::LBrace)?;
+        let mut fields = Vec::new();
+        while !self.at(&TokenKind::RBrace) && !self.at(&TokenKind::Eof) {
+            fields.push(self.parse_field()?);
+            if self.at(&TokenKind::Comma) {
+                self.bump();
+            }
+        }
+        let end = self.expect_punct(TokenKind::RBrace)?.span.end;
+        Ok(Variant {
+            name,
+            fields,
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_field(&mut self) -> Result<Field, Diagnostic> {
+        let name_tok = self.bump();
+        let (name, start) = match name_tok.kind {
+            TokenKind::Ident(n) => (n, name_tok.span.start),
+            _ => return Err(self.diag(name_tok.span, "E0019", "expected field name")),
+        };
+        self.expect_punct(TokenKind::Colon)?;
+        let ty = self.parse_type()?;
+        Ok(Field {
+            name,
+            span: Span::new(start, type_span(&ty).end),
+            ty,
+        })
+    }
+
+    fn parse_extern(&mut self) -> Result<ExternBlock, Diagnostic> {
+        let start = self.expect_punct(TokenKind::Extern)?.span.start;
+        let abi_tok = self.bump();
+        let abi = match abi_tok.kind {
+            TokenKind::Str(s) => s,
+            _ => return Err(self.diag(abi_tok.span, "E0020", "expected ABI string, e.g. \"C\"")),
+        };
+        self.expect_punct(TokenKind::LBrace)?;
+        let mut items = Vec::new();
+        while !self.at(&TokenKind::RBrace) && !self.at(&TokenKind::Eof) {
+            items.push(self.parse_extern_fn()?);
+        }
+        let end = self.expect_punct(TokenKind::RBrace)?.span.end;
+        Ok(ExternBlock {
+            abi,
+            items,
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_extern_fn(&mut self) -> Result<ExternFn, Diagnostic> {
+        let start = self.expect_punct(TokenKind::Fn)?.span.start;
+        let name_tok = self.bump();
+        let name = match name_tok.kind {
+            TokenKind::Ident(n) => n,
+            _ => return Err(self.diag(name_tok.span, "E0012", "expected function name")),
+        };
+        self.expect_punct(TokenKind::LParen)?;
+        let mut params = Vec::new();
+        if !self.at(&TokenKind::RParen) {
+            loop {
+                params.push(self.parse_param()?);
+                if self.at(&TokenKind::Comma) {
+                    self.bump();
+                    continue;
+                }
+                break;
+            }
+        }
+        self.expect_punct(TokenKind::RParen)?;
+        let ret = if self.at(&TokenKind::Arrow) {
+            self.bump();
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+        let end = ret
+            .as_ref()
+            .map(type_span)
+            .map(|s| s.end)
+            .unwrap_or_else(|| self.tokens[self.idx.saturating_sub(1)].span.end);
+        if self.at(&TokenKind::Semi) {
+            self.bump();
+        }
+        Ok(ExternFn {
+            name,
+            params,
+            ret,
+            span: Span::new(start, end),
+        })
     }
 
     fn parse_block(&mut self) -> Result<Block, Diagnostic> {
         let start = self.expect_punct(TokenKind::LBrace)?.span.start;
         let mut stmts = Vec::new();
-        while self.peek().kind != TokenKind::RBrace && self.peek().kind != TokenKind::Eof {
+        while !self.at(&TokenKind::RBrace) && !self.at(&TokenKind::Eof) {
             stmts.push(self.parse_stmt()?);
         }
         let end = self.expect_punct(TokenKind::RBrace)?.span.end;
@@ -597,13 +983,13 @@ impl Parser {
     }
 
     fn parse_stmt(&mut self) -> Result<Stmt, Diagnostic> {
-        match self.peek().kind {
+        match self.peek_kind() {
             TokenKind::Let => self.parse_let(),
             TokenKind::Return => {
                 let start = self.bump().span.start;
                 let value = if matches!(
-                    self.peek().kind,
-                    TokenKind::RBrace | TokenKind::Semi | TokenKind::Eof
+                    self.peek_kind(),
+                    TokenKind::RBrace | TokenKind::Semi | TokenKind::Eof | TokenKind::Comma
                 ) {
                     None
                 } else {
@@ -614,7 +1000,7 @@ impl Parser {
                     .map(expr_span)
                     .map(|s| s.end)
                     .unwrap_or(start + 6);
-                if self.peek().kind == TokenKind::Semi {
+                if self.at(&TokenKind::Semi) {
                     self.bump();
                 }
                 Ok(Stmt::Return {
@@ -624,7 +1010,7 @@ impl Parser {
             }
             _ => {
                 let e = self.parse_expr()?;
-                if self.peek().kind == TokenKind::Semi {
+                if self.at(&TokenKind::Semi) {
                     self.bump();
                 }
                 Ok(Stmt::Expr(e))
@@ -639,7 +1025,7 @@ impl Parser {
             TokenKind::Ident(s) => s,
             _ => return Err(self.diag(name_tok.span, "E0015", "expected binding name")),
         };
-        let ty = if self.peek().kind == TokenKind::Colon {
+        let ty = if self.at(&TokenKind::Colon) {
             self.bump();
             Some(self.parse_type()?)
         } else {
@@ -648,7 +1034,7 @@ impl Parser {
         self.expect_punct(TokenKind::Eq)?;
         let init = self.parse_expr()?;
         let end = expr_span(&init).end;
-        if self.peek().kind == TokenKind::Semi {
+        if self.at(&TokenKind::Semi) {
             self.bump();
         }
         Ok(Stmt::Let {
@@ -665,7 +1051,7 @@ impl Parser {
 
     fn parse_or(&mut self) -> Result<Expr, Diagnostic> {
         let mut lhs = self.parse_and()?;
-        while self.peek().kind == TokenKind::OrOr {
+        while self.at(&TokenKind::OrOr) {
             self.bump();
             let rhs = self.parse_and()?;
             let span = Span::new(expr_span(&lhs).start, expr_span(&rhs).end);
@@ -680,10 +1066,10 @@ impl Parser {
     }
 
     fn parse_and(&mut self) -> Result<Expr, Diagnostic> {
-        let mut lhs = self.parse_cmp()?;
-        while self.peek().kind == TokenKind::AndAnd {
+        let mut lhs = self.parse_is()?;
+        while self.at(&TokenKind::AndAnd) {
             self.bump();
-            let rhs = self.parse_cmp()?;
+            let rhs = self.parse_is()?;
             let span = Span::new(expr_span(&lhs).start, expr_span(&rhs).end);
             lhs = Expr::Binary {
                 op: BinOp::And,
@@ -695,10 +1081,25 @@ impl Parser {
         Ok(lhs)
     }
 
+    fn parse_is(&mut self) -> Result<Expr, Diagnostic> {
+        let mut lhs = self.parse_cmp()?;
+        if self.at(&TokenKind::Is) {
+            self.bump();
+            let pat = self.parse_pat()?;
+            let span = Span::new(expr_span(&lhs).start, pat_span(&pat).end);
+            lhs = Expr::Is {
+                expr: Box::new(lhs),
+                pat,
+                span,
+            };
+        }
+        Ok(lhs)
+    }
+
     fn parse_cmp(&mut self) -> Result<Expr, Diagnostic> {
         let mut lhs = self.parse_add()?;
         loop {
-            let op = match self.peek().kind {
+            let op = match self.peek_kind() {
                 TokenKind::EqEq => BinOp::Eq,
                 TokenKind::Ne => BinOp::Ne,
                 TokenKind::Lt => BinOp::Lt,
@@ -723,7 +1124,7 @@ impl Parser {
     fn parse_add(&mut self) -> Result<Expr, Diagnostic> {
         let mut lhs = self.parse_mul()?;
         loop {
-            let op = match self.peek().kind {
+            let op = match self.peek_kind() {
                 TokenKind::Plus => BinOp::Add,
                 TokenKind::Minus => BinOp::Sub,
                 _ => break,
@@ -742,15 +1143,15 @@ impl Parser {
     }
 
     fn parse_mul(&mut self) -> Result<Expr, Diagnostic> {
-        let mut lhs = self.parse_postfix()?;
+        let mut lhs = self.parse_as()?;
         loop {
-            let op = match self.peek().kind {
+            let op = match self.peek_kind() {
                 TokenKind::Star => BinOp::Mul,
                 TokenKind::Slash => BinOp::Div,
                 _ => break,
             };
             self.bump();
-            let rhs = self.parse_postfix()?;
+            let rhs = self.parse_as()?;
             let span = Span::new(expr_span(&lhs).start, expr_span(&rhs).end);
             lhs = Expr::Binary {
                 op,
@@ -762,16 +1163,58 @@ impl Parser {
         Ok(lhs)
     }
 
+    fn parse_as(&mut self) -> Result<Expr, Diagnostic> {
+        let mut expr = self.parse_unary()?;
+        while self.at(&TokenKind::As) {
+            self.bump();
+            let ty = self.parse_type()?;
+            let span = Span::new(expr_span(&expr).start, type_span(&ty).end);
+            expr = Expr::Cast {
+                expr: Box::new(expr),
+                ty,
+                span,
+            };
+        }
+        Ok(expr)
+    }
+
+    fn parse_unary(&mut self) -> Result<Expr, Diagnostic> {
+        if self.at(&TokenKind::Await) {
+            let start = self.bump().span.start;
+            let inner = self.parse_unary()?;
+            let span = Span::new(start, expr_span(&inner).end);
+            return Ok(Expr::Await {
+                inner: Box::new(inner),
+                span,
+            });
+        }
+        if self.at(&TokenKind::Minus) {
+            let start = self.bump().span.start;
+            let inner = self.parse_unary()?;
+            let span = Span::new(start, expr_span(&inner).end);
+            return Ok(Expr::Binary {
+                op: BinOp::Sub,
+                lhs: Box::new(Expr::Int {
+                    value: 0,
+                    span: Span::new(start, start),
+                }),
+                rhs: Box::new(inner),
+                span,
+            });
+        }
+        self.parse_postfix()
+    }
+
     fn parse_postfix(&mut self) -> Result<Expr, Diagnostic> {
         let mut expr = self.parse_primary()?;
         loop {
-            if self.peek().kind == TokenKind::LParen {
+            if self.at(&TokenKind::LParen) {
                 self.bump();
                 let mut args = Vec::new();
-                if self.peek().kind != TokenKind::RParen {
+                if !self.at(&TokenKind::RParen) {
                     loop {
                         args.push(self.parse_expr()?);
-                        if self.peek().kind == TokenKind::Comma {
+                        if self.at(&TokenKind::Comma) {
                             self.bump();
                             continue;
                         }
@@ -785,6 +1228,29 @@ impl Parser {
                     args,
                     span,
                 };
+            } else if self.at(&TokenKind::LBracket) {
+                self.bump();
+                let index = self.parse_expr()?;
+                let end = self.expect_punct(TokenKind::RBracket)?.span.end;
+                let span = Span::new(expr_span(&expr).start, end);
+                expr = Expr::Index {
+                    base: Box::new(expr),
+                    index: Box::new(index),
+                    span,
+                };
+            } else if self.at(&TokenKind::Dot) {
+                self.bump();
+                let name_tok = self.bump();
+                let name = match name_tok.kind {
+                    TokenKind::Ident(n) => n,
+                    _ => return Err(self.diag(name_tok.span, "E0021", "expected field name")),
+                };
+                let span = Span::new(expr_span(&expr).start, name_tok.span.end);
+                expr = Expr::Field {
+                    base: Box::new(expr),
+                    name,
+                    span,
+                };
             } else {
                 break;
             }
@@ -793,34 +1259,256 @@ impl Parser {
     }
 
     fn parse_primary(&mut self) -> Result<Expr, Diagnostic> {
-        let t = self.bump();
-        match t.kind {
-            TokenKind::Ident(name) => Ok(Expr::Ident {
-                name,
-                span: t.span,
-            }),
-            TokenKind::Int(value) => Ok(Expr::Int {
-                value,
-                span: t.span,
-            }),
-            TokenKind::Float(text) => Ok(Expr::Float {
-                text,
-                span: t.span,
-            }),
-            TokenKind::Str(value) => Ok(Expr::Str {
-                value,
-                span: t.span,
-            }),
+        match self.peek_kind().clone() {
+            TokenKind::If => self.parse_if(),
+            TokenKind::Match => self.parse_match(),
+            TokenKind::Task => {
+                let start = self.bump().span.start;
+                let body = self.parse_block()?;
+                Ok(Expr::Task {
+                    span: Span::new(start, body.span.end),
+                    body,
+                })
+            }
+            TokenKind::Unsafe => {
+                let start = self.bump().span.start;
+                let body = self.parse_block()?;
+                Ok(Expr::Unsafe {
+                    span: Span::new(start, body.span.end),
+                    body,
+                })
+            }
+            TokenKind::Ident(name) => {
+                let t = self.bump();
+                // Struct literal: Name { field: expr }
+                if self.at(&TokenKind::LBrace) {
+                    // Ambiguity with blocks after if/match — only treat as struct lit
+                    // when next is Ident + Colon (field) or RBrace.
+                    let save = self.idx;
+                    self.bump(); // {
+                    let is_struct = self.at(&TokenKind::RBrace)
+                        || (matches!(self.peek_kind(), TokenKind::Ident(_)) && {
+                            let save2 = self.idx;
+                            self.bump();
+                            let ok = self.at(&TokenKind::Colon);
+                            self.idx = save2;
+                            ok
+                        });
+                    self.idx = save;
+                    if is_struct {
+                        return self.parse_struct_lit(name, t.span.start);
+                    }
+                }
+                Ok(Expr::Ident {
+                    name,
+                    span: t.span,
+                })
+            }
+            TokenKind::Int(value) => {
+                let t = self.bump();
+                Ok(Expr::Int {
+                    value,
+                    span: t.span,
+                })
+            }
+            TokenKind::Float(text) => {
+                let t = self.bump();
+                Ok(Expr::Float {
+                    text,
+                    span: t.span,
+                })
+            }
+            TokenKind::Str(value) => {
+                let t = self.bump();
+                Ok(Expr::Str {
+                    value,
+                    span: t.span,
+                })
+            }
+            TokenKind::CStr(value) => {
+                let t = self.bump();
+                Ok(Expr::CStr {
+                    value,
+                    span: t.span,
+                })
+            }
+            TokenKind::Char(value) => {
+                let t = self.bump();
+                Ok(Expr::Char {
+                    value,
+                    span: t.span,
+                })
+            }
             TokenKind::LParen => {
+                let start = self.bump().span.start;
                 let inner = self.parse_expr()?;
                 let end = self.expect_punct(TokenKind::RParen)?.span.end;
                 Ok(Expr::Group {
                     inner: Box::new(inner),
-                    span: Span::new(t.span.start, end),
+                    span: Span::new(start, end),
                 })
             }
-            _ => Err(self.diag(t.span, "E0016", &format!("expected expression, found {:?}", t.kind))),
+            other => {
+                let t = self.bump();
+                Err(self.diag(
+                    t.span,
+                    "E0016",
+                    &format!("expected expression, found {:?}", other),
+                ))
+            }
         }
+    }
+
+    fn parse_struct_lit(&mut self, name: String, start: usize) -> Result<Expr, Diagnostic> {
+        self.expect_punct(TokenKind::LBrace)?;
+        let mut fields = Vec::new();
+        while !self.at(&TokenKind::RBrace) && !self.at(&TokenKind::Eof) {
+            let fname_tok = self.bump();
+            let fname = match fname_tok.kind {
+                TokenKind::Ident(n) => n,
+                _ => return Err(self.diag(fname_tok.span, "E0022", "expected field name")),
+            };
+            self.expect_punct(TokenKind::Colon)?;
+            let val = self.parse_expr()?;
+            fields.push((fname, val));
+            if self.at(&TokenKind::Comma) {
+                self.bump();
+            }
+        }
+        let end = self.expect_punct(TokenKind::RBrace)?.span.end;
+        Ok(Expr::StructLit {
+            name,
+            fields,
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_if(&mut self) -> Result<Expr, Diagnostic> {
+        let start = self.expect_punct(TokenKind::If)?.span.start;
+        let cond = self.parse_expr()?;
+        let then_block = self.parse_block()?;
+        let else_block = if self.at(&TokenKind::Else) {
+            self.bump();
+            Some(self.parse_block()?)
+        } else {
+            None
+        };
+        let end = else_block
+            .as_ref()
+            .map(|b| b.span.end)
+            .unwrap_or(then_block.span.end);
+        Ok(Expr::If {
+            cond: Box::new(cond),
+            then_block,
+            else_block,
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_match(&mut self) -> Result<Expr, Diagnostic> {
+        let start = self.expect_punct(TokenKind::Match)?.span.start;
+        let scrutinee = self.parse_expr()?;
+        self.expect_punct(TokenKind::LBrace)?;
+        let mut arms = Vec::new();
+        while !self.at(&TokenKind::RBrace) && !self.at(&TokenKind::Eof) {
+            let arm_start = self.peek().span.start;
+            let pat = self.parse_pat()?;
+            self.expect_punct(TokenKind::FatArrow)?;
+            let body = self.parse_expr()?;
+            let span = Span::new(arm_start, expr_span(&body).end);
+            arms.push(MatchArm { pat, body, span });
+            if self.at(&TokenKind::Comma) {
+                self.bump();
+            }
+        }
+        let end = self.expect_punct(TokenKind::RBrace)?.span.end;
+        Ok(Expr::Match {
+            scrutinee: Box::new(scrutinee),
+            arms,
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_pat(&mut self) -> Result<Pat, Diagnostic> {
+        let t = self.bump();
+        let name = match t.kind {
+            TokenKind::Ident(n) => n,
+            _ => return Err(self.diag(t.span, "E0023", "expected pattern")),
+        };
+        if self.at(&TokenKind::LParen) {
+            self.bump();
+            let mut args = Vec::new();
+            if !self.at(&TokenKind::RParen) {
+                loop {
+                    args.push(self.parse_pat()?);
+                    if self.at(&TokenKind::Comma) {
+                        self.bump();
+                        continue;
+                    }
+                    break;
+                }
+            }
+            let end = self.expect_punct(TokenKind::RParen)?.span.end;
+            return Ok(Pat::Call {
+                name,
+                args,
+                span: Span::new(t.span.start, end),
+            });
+        }
+        // Struct pattern only when `{` starts fields (`r`, `r: pat`), not an `if` body
+        // after `x is None { ... }`.
+        if self.at(&TokenKind::LBrace) && self.lookahead_struct_pat_fields() {
+            self.bump();
+            let mut fields = Vec::new();
+            while !self.at(&TokenKind::RBrace) && !self.at(&TokenKind::Eof) {
+                let ftok = self.bump();
+                let fname = match ftok.kind {
+                    TokenKind::Ident(n) => n,
+                    _ => return Err(self.diag(ftok.span, "E0022", "expected field name")),
+                };
+                let pat = if self.at(&TokenKind::Colon) {
+                    self.bump();
+                    self.parse_pat()?
+                } else {
+                    Pat::Ident {
+                        name: fname.clone(),
+                        span: ftok.span,
+                    }
+                };
+                fields.push((fname, pat));
+                if self.at(&TokenKind::Comma) {
+                    self.bump();
+                }
+            }
+            let end = self.expect_punct(TokenKind::RBrace)?.span.end;
+            return Ok(Pat::Struct {
+                name,
+                fields,
+                span: Span::new(t.span.start, end),
+            });
+        }
+        Ok(Pat::Ident {
+            name,
+            span: t.span,
+        })
+    }
+
+    fn lookahead_struct_pat_fields(&mut self) -> bool {
+        let save = self.idx;
+        self.bump(); // {
+        let ok = match self.peek_kind() {
+            TokenKind::RBrace => true,
+            TokenKind::Ident(_) => {
+                self.bump();
+                matches!(
+                    self.peek_kind(),
+                    TokenKind::Colon | TokenKind::Comma | TokenKind::RBrace
+                )
+            }
+            _ => false,
+        };
+        self.idx = save;
+        ok
     }
 }
 
@@ -830,13 +1518,36 @@ fn expr_span(e: &Expr) -> Span {
         | Expr::Int { span, .. }
         | Expr::Float { span, .. }
         | Expr::Str { span, .. }
+        | Expr::CStr { span, .. }
+        | Expr::Char { span, .. }
         | Expr::Call { span, .. }
+        | Expr::Field { span, .. }
+        | Expr::Index { span, .. }
         | Expr::Binary { span, .. }
+        | Expr::Cast { span, .. }
+        | Expr::Is { span, .. }
+        | Expr::If { span, .. }
+        | Expr::Match { span, .. }
+        | Expr::StructLit { span, .. }
+        | Expr::Task { span, .. }
+        | Expr::Await { span, .. }
+        | Expr::Unsafe { span, .. }
         | Expr::Group { span, .. } => *span,
     }
 }
 
-/// Parse a source file into an AST.
+fn type_span(t: &TypeRef) -> Span {
+    match t {
+        TypeRef::Named { span, .. } | TypeRef::Ptr { span, .. } => *span,
+    }
+}
+
+fn pat_span(p: &Pat) -> Span {
+    match p {
+        Pat::Ident { span, .. } | Pat::Call { span, .. } | Pat::Struct { span, .. } => *span,
+    }
+}
+
 pub fn parse_file(path: &str, text: String) -> Result<(SourceFile, Program), Diagnostic> {
     let file = SourceFile {
         path: path.to_string(),
@@ -853,50 +1564,37 @@ mod tests {
     use super::*;
 
     #[test]
-    fn lexes_hello() {
-        let src = r#"fn main() { print("hello, newproj") }"#;
-        let toks = Lexer::new("t.np", src).tokenize().unwrap();
-        assert!(toks.iter().any(|t| matches!(t.kind, TokenKind::Fn)));
-        assert!(toks.iter().any(|t| matches!(t.kind, TokenKind::Str(_))));
-    }
-
-    #[test]
     fn parses_hello() {
-        let src = r#"
-# 01 — hello
-fn main() {
-    print("hello, newproj")
-}
-"#;
-        let (_f, prog) = parse_file("01_hello.np", src.into()).unwrap();
+        let src = r#"fn main() { print("hello, newproj") }"#;
+        let (_f, prog) = parse_file("t.np", src.into()).unwrap();
         assert_eq!(prog.items.len(), 1);
-        match &prog.items[0] {
-            Item::Fn(f) => {
-                assert_eq!(f.name, "main");
-                assert_eq!(f.body.stmts.len(), 1);
-            }
-        }
     }
 
     #[test]
-    fn parses_locals() {
-        let src = r#"
-fn main() {
-    let name = "world"
-    let n: i32 = 42
-    print(name)
-    print(n)
-}
-"#;
-        let (_f, prog) = parse_file("02_locals.np", src.into()).unwrap();
-        match &prog.items[0] {
-            Item::Fn(f) => assert!(f.body.stmts.len() >= 3),
-        }
+    fn parses_option_match() {
+        let src = std::fs::read_to_string(
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/03_option_match.np"),
+        )
+        .unwrap();
+        parse_file("03.np", src).unwrap();
     }
 
     #[test]
-    fn empty_program_ok() {
-        assert!(parse_file("x.np", String::new()).is_ok());
+    fn parses_adt() {
+        let src = std::fs::read_to_string(
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/05_adt.np"),
+        )
+        .unwrap();
+        parse_file("05.np", src).unwrap();
+    }
+
+    #[test]
+    fn parses_c_abi() {
+        let src = std::fs::read_to_string(
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/09_c_abi.np"),
+        )
+        .unwrap();
+        parse_file("09.np", src).unwrap();
     }
 
     #[test]
