@@ -3,11 +3,13 @@
 A small, memory-safe, native language aimed at the two-language problem:
 easy to write, fast to run, safe by default — with tooling that humans and AI agents can both drive.
 
+**Compiler binary name: `npc`** (newproj compiler). The *language* name is still TBD.
+
 This is **not** a fork of IWBasic. Lessons from `iwbc` (ship a compiler + runtime + samples) apply; the language surface and semantics are new.
 
 ## Status
 
-Bootstrap: manifesto, decisions, example programs, and a Rust compiler skeleton that is not yet a real frontend.
+Lexer + parser for `fn` / `let` / calls / literals. `npc check` parses `.np` files and reports syntax (and a few stub type) errors.
 
 ## Quick start (once the compiler exists)
 

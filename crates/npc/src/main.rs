@@ -3,8 +3,7 @@ use std::fs;
 use std::path::Path;
 use std::process;
 
-use np_hir::{lower, Diagnostic};
-use np_syntax::parse_file;
+use np_hir::{check, Diagnostic};
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -18,12 +17,13 @@ struct JsonDiag<'a> {
 
 fn usage() -> ! {
     eprintln!(
-        "npc — newproj compiler (stub)\n\n\
+        "npc — newproj compiler\n\n\
          Usage:\n\
            npc check [--json] <file.np>\n\
            npc run <file.np>     (not implemented)\n\
            npc fmt <file.np>     (not implemented)\n\
-           npc test              (cargo test in workspace)\n"
+           npc test              (run `cargo test` in the workspace)\n\n\
+         The compiler binary is `npc`. The language name is still TBD.\n"
     );
     process::exit(2);
 }
@@ -54,20 +54,18 @@ fn cmd_check(path: &Path, json: bool) -> i32 {
             return 1;
         }
     };
-    let file = match parse_file(&path.display().to_string(), text) {
-        Ok(f) => f,
-        Err(e) => {
-            eprintln!("npc: parse error: {e:?}");
-            return 1;
-        }
-    };
-    let (_module, diags) = lower(file);
+    let (module, diags) = check(&path.display().to_string(), text);
     for d in &diags {
         print_diag(d, json);
     }
     if diags.is_empty() {
         if !json {
-            eprintln!("npc: ok (stub — no real typechecker yet)");
+            if let Some(m) = module {
+                let n = m.program.items.len();
+                eprintln!("npc: ok ({n} item{})", if n == 1 { "" } else { "s" });
+            } else {
+                eprintln!("npc: ok");
+            }
         }
         0
     } else {
