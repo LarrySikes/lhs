@@ -1,9 +1,13 @@
 //! Lexer and parser for `.np` source. Spec = `examples/`.
 //!
 //! Compiler layout:
-//! - `crates/np_syntax` — this crate (tokens + AST + parse)
-//! - `crates/np_hir` — early checks / typed IR (stub)
+//! - `crates/np_syntax` — this crate (tokens + AST + parse + fmt)
+//! - `crates/np_hir` — type checking
+//! - `crates/np_eval` — interpreter (`npc run`)
 //! - `crates/npc` — CLI (`npc check`)
+
+pub mod format;
+pub use format::format_program;
 
 use std::fmt;
 
@@ -1524,6 +1528,10 @@ impl Parser {
         self.idx = save;
         ok
     }
+}
+
+pub fn expr_span_pub(e: &Expr) -> Span {
+    expr_span(e)
 }
 
 fn expr_span(e: &Expr) -> Span {

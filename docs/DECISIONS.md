@@ -34,9 +34,11 @@ tasks (message or immutable share).
 
 ## D5 — Backend
 
-**Decision:** Cranelift for fast debug builds; LLVM optional later.  
-**Why:** quicker compile loop while the language moves; LLVM when we
-chase peak performance.
+**Decision (v0.1):** `npc run` uses a tree-walking interpreter; `npc build`
+emits C + `cc` for a **simple subset** (main/let/print/literals).  
+**Next:** Cranelift JIT/AOT for the full language (original D5 intent).  
+**Why ship this way:** get a complete check/run/test/fmt loop and a native
+path for hello-world without blocking the rest of the toolchain.
 
 ## D6 — Interop
 

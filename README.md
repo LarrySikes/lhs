@@ -1,47 +1,36 @@
-# newproj (working title)
+# newproj (working title) — v0.1
 
-A small, memory-safe, native language aimed at the two-language problem:
-easy to write, fast to run, safe by default — with tooling that humans and AI agents can both drive.
+A small, memory-safe-oriented language with a Rust-hosted toolchain (`npc`).
 
-**Compiler binary name: `npc`** (newproj compiler). The *language* name is still TBD.
+**Compiler binary: `npc`.** Language name still TBD.
 
-This is **not** a fork of IWBasic. Lessons from `iwbc` (ship a compiler + runtime + samples) apply; the language surface and semantics are new.
-
-## Status
-
-Lexer + parser for the `examples/` grammar. `npc check` reports syntax/type stub
-errors. `npc run` executes via a tree-walking interpreter (Cranelift/LLVM later).
-
-## Quick start (once the compiler exists)
+## Commands
 
 ```bash
 cargo run -p npc -- check examples/01_hello.np
 cargo run -p npc -- run examples/01_hello.np
-cargo test
+cargo run -p npc -- fmt examples/01_hello.np
+cargo run -p npc -- test examples
+cargo run -p npc -- build examples/01_hello.np -o /tmp/np_hello
 ```
 
 ## Compiler source
 
-| Path | Purpose |
-|------|---------|
-| `crates/npc/src/main.rs` | CLI entry (`npc check` / `npc run`) |
-| `crates/np_syntax/src/lib.rs` | Lexer, parser, AST |
-| `crates/np_hir/src/lib.rs` | Early checks / typed IR |
-| `crates/np_eval/src/lib.rs` | Tree-walking interpreter (`npc run`) |
+| Path | Role |
+|------|------|
+| `crates/npc` | CLI |
+| `crates/np_syntax` | Lexer, parser, AST, formatter |
+| `crates/np_hir` | Type checker |
+| `crates/np_eval` | Interpreter (`run`) |
+| `crates/np_codegen` | C subset emitter (`build`) |
 
-Absolute path on this machine: `/home/iwlnx/src/newproj/crates/`
+Absolute path: `/home/iwlnx/src/newproj/crates/`
 
-## Layout
+## v0.1 status
 
-| Path | Purpose |
-|------|---------|
-| `docs/MANIFESTO.md` | Goals and non-goals |
-| `docs/DECISIONS.md` | Locked design choices |
-| `examples/` | Spec-by-example programs |
-| `crates/npc` | Compiler CLI (`npc`) |
-| `crates/np_syntax` | Lexer / parser / AST |
-| `crates/np_hir` | Typed IR (early stub) |
-
-## Related
-
-IWBasic / `iwbc` remains at `~/src/new0423/iwb_project` for desktop BASIC work.
+- [x] Parse `examples/`
+- [x] Typecheck (JSON diagnostics)
+- [x] `npc run` interpreter (Option/Result/match/tasks/file I/O)
+- [x] `npc fmt` / `npc test`
+- [x] `npc build` → native binary for simple main/print programs
+- [ ] Cranelift backend for full language (see DECISIONS D5)

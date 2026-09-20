@@ -30,11 +30,14 @@ pleasant day-to-day and trustworthy in production.
 
 A small language that:
 
-1. Compiles `examples/` to a native binary.
+1. Runs `examples/` via `npc run`; simple programs also `npc build` to native (`cc`).
 2. Has `Option` / `Result`, pattern matching, and no implicit null.
 3. Ships `npc check | run | test | fmt` with JSON diagnostics.
 4. Has one concurrency demo (structured spawn + join).
 5. Documents how AI agents should call the toolchain.
+
+**v0.1 delivered** the above with an interpreter + C subset backend.
+Cranelift for full AOT remains next (DECISIONS D5).
 
 ## Relationship to iwbc
 

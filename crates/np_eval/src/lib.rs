@@ -320,6 +320,54 @@ impl<'a, W: Write> Interpreter<'a, W> {
                 writeln!(self.out).map_err(|e| err(e.to_string()))?;
                 return Ok(Value::Unit);
             }
+            if name == "read_file" {
+                let path = match arg_vals.first() {
+                    Some(Value::Str(s)) => s.clone(),
+                    _ => return Err(err("read_file expects str path")),
+                };
+                match std::fs::read_to_string(&path) {
+                    Ok(s) => {
+                        return Ok(Value::Variant {
+                            name: "Ok".into(),
+                            fields: HashMap::new(),
+                            positional: vec![Value::Str(s)],
+                        })
+                    }
+                    Err(e) => {
+                        return Ok(Value::Variant {
+                            name: "Err".into(),
+                            fields: HashMap::new(),
+                            positional: vec![Value::Str(e.to_string())],
+                        })
+                    }
+                }
+            }
+            if name == "write_file" {
+                let path = match arg_vals.first() {
+                    Some(Value::Str(s)) => s.clone(),
+                    _ => return Err(err("write_file expects str path")),
+                };
+                let contents = match arg_vals.get(1) {
+                    Some(Value::Str(s)) => s.clone(),
+                    _ => return Err(err("write_file expects str contents")),
+                };
+                match std::fs::write(&path, contents) {
+                    Ok(()) => {
+                        return Ok(Value::Variant {
+                            name: "Ok".into(),
+                            fields: HashMap::new(),
+                            positional: vec![Value::Unit],
+                        })
+                    }
+                    Err(e) => {
+                        return Ok(Value::Variant {
+                            name: "Err".into(),
+                            fields: HashMap::new(),
+                            positional: vec![Value::Str(e.to_string())],
+                        })
+                    }
+                }
+            }
             if matches!(name.as_str(), "Some" | "Ok" | "Err") {
                 return Ok(Value::Variant {
                     name: name.clone(),
@@ -333,6 +381,7 @@ impl<'a, W: Write> Interpreter<'a, W> {
             // Interpreter stubs for common extern decls (no real FFI yet)
             if name == "puts" {
                 if let Some(Value::Str(s)) = arg_vals.first() {
+                    let s = s.trim_end_matches('\0');
                     writeln!(self.out, "{s}").map_err(|e| err(e.to_string()))?;
                     return Ok(Value::Int(0));
                 }
