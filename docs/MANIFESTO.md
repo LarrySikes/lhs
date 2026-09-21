@@ -30,7 +30,8 @@ pleasant day-to-day and trustworthy in production.
 
 A small language that:
 
-1. Runs `examples/` via `lhsc run`; simple programs also `lhsc build` to native (`cc`).
+1. Runs `examples/` via `lhsc run`; **`lhsc build` natives for the full language**
+   (embed + `liblhs_rt`, 2026 v0.2). Optional `--emit=c` subset AOT.
 2. Has `Option` / `Result`, pattern matching, and no implicit null.
 3. Ships `lhsc check | run | test | fmt` with JSON diagnostics.
 4. Has one concurrency demo (structured spawn + join).
