@@ -1,9 +1,8 @@
-# LHS — v0.1
+# LHS — v0.2 (2026)
 
 **LHS** is a small, memory-safe-oriented language with a Rust-hosted toolchain.
 
-**Compiler:** `lhsc` (LHS compiler).  
-**Source files:** `.lhs`
+**Compiler:** `lhsc` · **Sources:** `.lhs` · **Year:** 2026
 
 ## Commands
 
@@ -12,10 +11,10 @@ cargo run -p npc --bin lhsc -- check examples/01_hello.lhs
 cargo run -p npc --bin lhsc -- run examples/01_hello.lhs
 cargo run -p npc --bin lhsc -- fmt examples/01_hello.lhs
 cargo run -p npc --bin lhsc -- test examples
-cargo run -p npc --bin lhsc -- build examples/01_hello.lhs -o /tmp/lhs_hello
+cargo run -p npc --bin lhsc -- build examples/03_option_match.lhs -o /tmp/lhs_03
+# optional subset AOT:
+cargo run -p npc --bin lhsc -- build examples/01_hello.lhs -o /tmp/h --emit=c
 ```
-
-(After `cargo install --path crates/npc`, just use `lhsc`.)
 
 ## Compiler source
 
@@ -24,16 +23,15 @@ cargo run -p npc --bin lhsc -- build examples/01_hello.lhs -o /tmp/lhs_hello
 | `crates/npc` | CLI (`lhsc`) |
 | `crates/np_syntax` | Lexer, parser, AST, formatter |
 | `crates/np_hir` | Type checker |
-| `crates/np_eval` | Interpreter (`run`) |
-| `crates/np_codegen` | C subset emitter (`build`) |
+| `crates/np_eval` | Interpreter |
+| `crates/np_codegen` | Native packaging + subset C emitter |
+| `crates/lhs_rt` | `liblhs_rt.a` for `lhsc build` |
 
-Repo path: `/home/iwlnx/src/newproj/`
+## Status (v0.2)
 
-## Status
-
-- [x] Parse `examples/`
-- [x] Typecheck (JSON diagnostics)
-- [x] `lhsc run` interpreter
-- [x] `lhsc fmt` / `lhsc test`
-- [x] `lhsc build` → native binary for simple programs
-- [ ] Cranelift backend for full language
+- [x] Parse / typecheck / fmt / test
+- [x] `lhsc run` full examples
+- [x] `lhsc build` native binaries for **all** language features (embed + `liblhs_rt`)
+- [x] `--emit=c` subset translator
+- [x] Stdlib: print, file I/O, abs/min/max/assert
+- [ ] Cranelift AOT (optional future)

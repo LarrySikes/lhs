@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
 
-use np_codegen::{compile_c_to_binary, emit_c};
+use np_codegen::{build_native, compile_c_to_binary, emit_c};
 use np_eval::run_program_stdout;
 use np_hir::{check, Diagnostic};
 use np_syntax::format_program;
@@ -26,7 +26,9 @@ fn usage() -> ! {
            lhsc run <file.lhs>\n\
            lhsc fmt [--write] <file.lhs>\n\
            lhsc test [examples_dir]\n\
-           lhsc build <file.lhs> [-o outfile]   (simple subset → native via cc)\n\n\
+           lhsc build <file.lhs> [-o outfile] [--emit=c]\n\
+             default: native binary (embeds source, links liblhs_rt)\n\
+             --emit=c: subset AOT via C translator\n\n\
          Language: LHS. Compiler implemented in Rust.\n"
     );
     process::exit(2);
@@ -198,28 +200,50 @@ fn cmd_test(dir: &Path) -> i32 {
     }
 }
 
-fn cmd_build(path: &Path, out: &Path) -> i32 {
-    let Some(module) = load_ok(path) else {
-        return 1;
+fn cmd_build(path: &Path, out: &Path, emit_c_subset: bool) -> i32 {
+    let text = match fs::read_to_string(path) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("lhsc: cannot read {}: {e}", path.display());
+            return 1;
+        }
     };
-    match emit_c(&module.program) {
-        Ok(c) => match compile_c_to_binary(&c, &out.display().to_string()) {
+    let (module, diags) = check(&path.display().to_string(), text.clone());
+    for d in &diags {
+        print_diag(d, false);
+    }
+    if !diags.is_empty() || module.is_none() {
+        return 1;
+    }
+    let module = module.unwrap();
+
+    if emit_c_subset {
+        match emit_c(&module.program) {
+            Ok(c) => match compile_c_to_binary(&c, &out.display().to_string()) {
+                Ok(()) => {
+                    eprintln!("lhsc: built {} (--emit=c subset)", out.display());
+                    0
+                }
+                Err(e) => {
+                    eprintln!("lhsc: link failed: {}", e.message);
+                    1
+                }
+            },
+            Err(e) => {
+                eprintln!("lhsc: --emit=c: {}", e.message);
+                1
+            }
+        }
+    } else {
+        match build_native(&text, &out.display().to_string()) {
             Ok(()) => {
                 eprintln!("lhsc: built {}", out.display());
                 0
             }
             Err(e) => {
-                eprintln!("lhsc: link failed: {}", e.message);
+                eprintln!("lhsc: build failed: {}", e.message);
                 1
             }
-        },
-        Err(e) => {
-            eprintln!("lhsc: build: {}", e.message);
-            eprintln!(
-                "lhsc: tip: use `lhsc run {}` for full language support",
-                path.display()
-            );
-            1
         }
     }
 }
@@ -278,10 +302,13 @@ fn main() {
         "build" => {
             let mut out: Option<String> = None;
             let mut file: Option<String> = None;
+            let mut emit_c_subset = false;
             let mut it = args.into_iter();
             while let Some(a) = it.next() {
                 if a == "-o" {
                     out = it.next();
+                } else if a == "--emit=c" {
+                    emit_c_subset = true;
                 } else if a.starts_with('-') {
                     usage();
                 } else {
@@ -296,7 +323,7 @@ fn main() {
                     .to_string_lossy()
                     .into_owned()
             });
-            process::exit(cmd_build(Path::new(&file), Path::new(&out)));
+            process::exit(cmd_build(Path::new(&file), Path::new(&out), emit_c_subset));
         }
         "-h" | "--help" | "help" => usage(),
         other => {

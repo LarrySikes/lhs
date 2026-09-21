@@ -1,0 +1,15 @@
+[package]
+name = "lhs_rt"
+version.workspace = true
+edition.workspace = true
+description = "LHS runtime as a C-linkable static library"
+
+[lib]
+name = "lhs_rt"
+crate-type = ["staticlib", "rlib"]
+path = "src/lib.rs"
+
+[dependencies]
+np_syntax = { path = "../np_syntax" }
+np_hir = { path = "../np_hir" }
+np_eval = { path = "../np_eval" }

@@ -34,11 +34,12 @@ tasks (message or immutable share).
 
 ## D5 — Backend
 
-**Decision (v0.1):** `lhsc run` uses a tree-walking interpreter; `lhsc build`
-emits C + `cc` for a **simple subset** (main/let/print/literals).  
-**Next:** Cranelift JIT/AOT for the full language (original D5 intent).  
-**Why ship this way:** get a complete check/run/test/fmt loop and a native
-path for hello-world without blocking the rest of the toolchain.
+**Decision (v0.2, 2026):** `lhsc build` embeds `.lhs` source and links
+`liblhs_rt.a` so **every** program can become a native binary.  
+`--emit=c` remains for a small AOT subset (no ADT/match/methods).  
+**Next (optional):** Cranelift/LLVM true AOT without the interpreter runtime.  
+**Why:** Completes the manifesto “ship runnable natives” goal without blocking
+on a full lowering of ADTs.
 
 ## D6 — Interop
 

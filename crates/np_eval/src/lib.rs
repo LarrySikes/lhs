@@ -368,6 +368,47 @@ impl<'a, W: Write> Interpreter<'a, W> {
                     }
                 }
             }
+            if name == "abs" {
+                return match arg_vals.first() {
+                    Some(Value::Int(n)) => Ok(Value::Int(n.abs())),
+                    Some(Value::Float(x)) => Ok(Value::Float(x.abs())),
+                    _ => Err(err("abs expects int or float")),
+                };
+            }
+            if name == "min" || name == "max" {
+                let a = arg_vals.first().ok_or_else(|| err("min/max need 2 args"))?;
+                let b = arg_vals.get(1).ok_or_else(|| err("min/max need 2 args"))?;
+                match (a, b) {
+                    (Value::Int(x), Value::Int(y)) => {
+                        return Ok(Value::Int(if name == "min" {
+                            (*x).min(*y)
+                        } else {
+                            (*x).max(*y)
+                        }));
+                    }
+                    (Value::Float(x), Value::Float(y)) => {
+                        return Ok(Value::Float(if name == "min" {
+                            x.min(*y)
+                        } else {
+                            x.max(*y)
+                        }));
+                    }
+                    _ => return Err(err("min/max expect matching numeric types")),
+                }
+            }
+            if name == "assert" {
+                match arg_vals.first() {
+                    Some(Value::Bool(true)) => return Ok(Value::Unit),
+                    Some(Value::Bool(false)) => {
+                        let msg = arg_vals
+                            .get(1)
+                            .map(|v| format!("{v}"))
+                            .unwrap_or_else(|| "assertion failed".into());
+                        return Err(err(msg));
+                    }
+                    _ => return Err(err("assert expects bool")),
+                }
+            }
             if matches!(name.as_str(), "Some" | "Ok" | "Err") {
                 return Ok(Value::Variant {
                     name: name.clone(),

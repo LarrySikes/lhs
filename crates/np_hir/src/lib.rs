@@ -262,6 +262,13 @@ impl<'a> Checker<'a> {
                 Ty::Result(Box::new(Ty::Unit), Box::new(Ty::Str)),
             ),
         );
+        self.fns.insert("abs".into(), (vec![Ty::Unknown], Ty::Unknown));
+        self.fns
+            .insert("min".into(), (vec![Ty::Unknown, Ty::Unknown], Ty::Unknown));
+        self.fns
+            .insert("max".into(), (vec![Ty::Unknown, Ty::Unknown], Ty::Unknown));
+        self.fns
+            .insert("assert".into(), (vec![Ty::Bool], Ty::Unit));
     }
 
     fn check_program(&mut self, program: &Program) {
@@ -677,11 +684,27 @@ impl<'a> Checker<'a> {
                 }
                 return Ty::Unit;
             }
-            if name == "read_file" || name == "write_file" {
+            if name == "read_file" || name == "write_file" || name == "abs" || name == "min"
+                || name == "max" || name == "assert"
+            {
                 if let Some((params, ret)) = self.fns.get(name).cloned() {
                     for (i, a) in args.iter().enumerate() {
                         let expect = params.get(i).cloned();
-                        let _ = self.check_expr(env, a, expect.as_ref());
+                        let got = self.check_expr(env, a, expect.as_ref());
+                        if name == "abs" || name == "min" || name == "max" {
+                            // return type follows args
+                            if i == 0 && name == "abs" {
+                                return got;
+                            }
+                            if i == 0 && (name == "min" || name == "max") {
+                                // fall through after all args
+                            }
+                        }
+                    }
+                    if name == "min" || name == "max" {
+                        if let Some(a0) = args.first() {
+                            return self.check_expr(env, a0, None);
+                        }
                     }
                     return ret;
                 }
