@@ -54,13 +54,10 @@ pub fn find_lhs_rt_dir() -> Result<PathBuf, EmitError> {
     })
 }
 
-/// Ensure `lhs_rt` staticlib exists (build debug if missing).
+/// Ensure `lhs_rt` staticlib is up to date.
 pub fn ensure_lhs_rt() -> Result<PathBuf, EmitError> {
-    if let Ok(dir) = find_lhs_rt_dir() {
-        return Ok(dir);
-    }
     let status = Command::new("cargo")
-        .args(["build", "-p", "lhs_rt"])
+        .args(["build", "-p", "lhs_rt", "-q"])
         .status()
         .map_err(|e| EmitError {
             message: format!("failed to run cargo build -p lhs_rt: {e}"),
