@@ -45,6 +45,7 @@ pub enum TokenKind {
     As,
     Is,
     Const,
+    Use,
     Ident(String),
     Int(i64),
     Float(String),
@@ -394,6 +395,7 @@ fn keyword_or_ident(text: &str) -> TokenKind {
         "as" => TokenKind::As,
         "is" => TokenKind::Is,
         "const" => TokenKind::Const,
+        "use" => TokenKind::Use,
         _ => TokenKind::Ident(text.to_string()),
     }
 }
@@ -410,6 +412,15 @@ pub enum Item {
     Fn(FnItem),
     Type(TypeItem),
     Extern(ExternBlock),
+    /// `use math` or `use std/io` — loads `stdlib/<path>.lhs` (or search path).
+    Use(UseItem),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UseItem {
+    /// Path segments, e.g. `["math"]` or `["std", "io"]`.
+    pub path: Vec<String>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -718,11 +729,63 @@ impl Parser {
             TokenKind::Fn => Ok(Item::Fn(self.parse_fn()?)),
             TokenKind::Type => Ok(Item::Type(self.parse_type_item()?)),
             TokenKind::Extern => Ok(Item::Extern(self.parse_extern()?)),
+            TokenKind::Use => Ok(Item::Use(self.parse_use()?)),
             _ => {
                 let t = self.peek().clone();
-                Err(self.diag(t.span, "E0011", "expected `fn`, `type`, or `extern` item"))
+                Err(self.diag(
+                    t.span,
+                    "E0011",
+                    "expected `fn`, `type`, `use`, or `extern` item",
+                ))
             }
         }
+    }
+
+    fn parse_use(&mut self) -> Result<UseItem, Diagnostic> {
+        let start = self.expect_punct(TokenKind::Use)?.span.start;
+        let mut path = Vec::new();
+        let first = self.bump();
+        match first.kind {
+            TokenKind::Ident(s) => path.push(s),
+            TokenKind::Str(s) => {
+                for part in s.split(['/', '\\', '.']).filter(|p| !p.is_empty()) {
+                    path.push(part.to_string());
+                }
+                if path.is_empty() {
+                    return Err(self.diag(first.span, "E0012", "empty use path"));
+                }
+                let mut end = first.span.end;
+                if self.at(&TokenKind::Semi) {
+                    end = self.bump().span.end;
+                }
+                return Ok(UseItem {
+                    path,
+                    span: Span::new(start, end),
+                });
+            }
+            _ => {
+                return Err(self.diag(first.span, "E0012", "expected module path after `use`"));
+            }
+        }
+        let mut end = first.span.end;
+        while self.at(&TokenKind::Dot) || self.at(&TokenKind::Slash) {
+            self.bump();
+            let seg = self.bump();
+            match seg.kind {
+                TokenKind::Ident(s) => {
+                    end = seg.span.end;
+                    path.push(s);
+                }
+                _ => return Err(self.diag(seg.span, "E0012", "expected path segment")),
+            }
+        }
+        if self.at(&TokenKind::Semi) {
+            end = self.bump().span.end;
+        }
+        Ok(UseItem {
+            path,
+            span: Span::new(start, end),
+        })
     }
 
     fn parse_fn(&mut self) -> Result<FnItem, Diagnostic> {

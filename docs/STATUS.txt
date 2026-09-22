@@ -1,4 +1,4 @@
-LHS STATUS — v0.5 (2026-09-21)
+LHS STATUS — v0.6 (2026-09-22)
 ================================
 
 WHAT THIS IS
@@ -7,25 +7,25 @@ WHAT THIS IS
   Separate from IWAI/UCC (~/src/iwai_project). See HOW_WE_GOT_HERE.txt.
 
 DONE
-  - Full toolchain: check / run / watch / fmt / test / build
+  - Full toolchain: check / run / watch / fmt / test / build / lib
   - Interpreter + embed natives + Cranelift JIT/AOT
   - Parallel task/await, extern "C", structs/methods, file I/O
-  - Shared lhs_mem with reference-counted cells/strings + lhs_gc
-  - Extended stdlib: getenv, argc/arg, exit, sleep_ms, now_ms, eprint, gc
-  - Package layout reserved (stdlib/, docs/PACKAGES.md)
-  - Examples 01–16, day planner, CI, licenses
+  - Shared lhs_mem RC heap + lhs_gc
+  - Extended stdlib builtins + `use` module imports
+  - stdlib/math.lhs, stdlib/io.lhs; example 17
+  - Package search via LHS_PATH; docs/PACKAGES.md
+  - Examples 01–17, day planner, CI, licenses
 
 VERIFY
   cd ~/src/newproj
-  cargo test --workspace
   cargo run -p npc --bin lhsc -- test examples
-  cargo run -p npc --bin lhsc -- run --jit examples/16_stdlib_ext.lhs
+  cargo run -p npc --bin lhsc -- lib
+  cargo run -p npc --bin lhsc -- run --jit examples/17_use_math.lhs
 
-OPTIONAL LATER (product polish, not open checklist)
-  - Package imports (`use`) + registry
-  - Mark-sweep compaction / longer-lived heaps across runs
-  - Broader libc bindings
-  - Real-world production hardening
+OPTIONAL LATER
+  - Remote package registry
+  - Namespaced imports (mod::fn) instead of flat merge
+  - else-if sugar; richer libc surface
 
 NEXT PRODUCT FORK
   A) Keep polishing LHS

@@ -216,7 +216,7 @@ fn c_params(f: &FnItem) -> String {
 fn is_supported(program: &Program) -> bool {
     for item in &program.items {
         match item {
-            Item::Type(_) | Item::Extern(_) => return false,
+            Item::Type(_) | Item::Extern(_) | Item::Use(_) => return false,
             Item::Fn(f) => {
                 if f.receiver.is_some() {
                     return false;

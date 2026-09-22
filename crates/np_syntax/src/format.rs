@@ -1,7 +1,7 @@
 //! Pretty-printer for `.lhs` AST (`lhsc fmt`).
 
 use crate::{
-    BinOp, Block, Expr, FnItem, Item, Pat, Program, Stmt, TypeBody, TypeItem, TypeRef,
+    BinOp, Block, Expr, FnItem, Item, Pat, Program, Stmt, TypeBody, TypeItem, TypeRef, UseItem,
 };
 
 pub fn format_program(program: &Program) -> String {
@@ -20,6 +20,7 @@ fn format_item(out: &mut String, item: &Item) {
     match item {
         Item::Fn(f) => format_fn(out, f),
         Item::Type(t) => format_type(out, t),
+        Item::Use(u) => format_use(out, u),
         Item::Extern(e) => {
             out.push_str("extern \"");
             out.push_str(&e.abi);
@@ -47,6 +48,16 @@ fn format_item(out: &mut String, item: &Item) {
             }
             out.push('}');
         }
+    }
+}
+
+fn format_use(out: &mut String, u: &UseItem) {
+    out.push_str("use ");
+    for (i, seg) in u.path.iter().enumerate() {
+        if i > 0 {
+            out.push('.');
+        }
+        out.push_str(seg);
     }
 }
 

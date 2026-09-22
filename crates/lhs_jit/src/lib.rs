@@ -478,7 +478,7 @@ pub fn is_jit_supported(program: &Program) -> bool {
         .collect();
     for item in &program.items {
         match item {
-            Item::Type(_) => {}
+            Item::Type(_) | Item::Use(_) => {}
             Item::Extern(b) => {
                 if b.abi != "C" {
                     return false;

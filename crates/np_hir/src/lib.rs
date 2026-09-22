@@ -268,6 +268,7 @@ impl<'a> Checker<'a> {
                         self.fns.insert(ef.name.clone(), (params, ret));
                     }
                 }
+                Item::Use(_) => {}
             }
         }
         // builtins
@@ -1044,6 +1045,135 @@ pub fn check(path: &str, text: String) -> (Option<Module>, Vec<Diagnostic>) {
         }
         Err(e) => (None, vec![Diagnostic::from(e)]),
     }
+}
+
+/// Resolve `use` items by loading modules from `search_dirs` (typically
+/// `stdlib/` and the source file's directory), then typecheck the merged program.
+pub fn check_with_imports(
+    path: &str,
+    text: String,
+    search_dirs: &[std::path::PathBuf],
+) -> (Option<Module>, Vec<Diagnostic>) {
+    match np_syntax::parse_file(path, text) {
+        Ok((file, program)) => {
+            let mut diags = Vec::new();
+            let merged = match merge_imports(path, &program, search_dirs, &mut diags) {
+                Some(p) => p,
+                None => return (None, diags),
+            };
+            let mut checker = Checker {
+                file: path,
+                types: HashMap::new(),
+                fns: HashMap::new(),
+                diags: Vec::new(),
+            };
+            checker.collect(&merged);
+            checker.check_program(&merged);
+            diags.extend(checker.diags);
+            (Some(Module {
+                file,
+                program: merged,
+            }), diags)
+        }
+        Err(e) => (None, vec![Diagnostic::from(e)]),
+    }
+}
+
+fn merge_imports(
+    from_file: &str,
+    program: &np_syntax::Program,
+    search_dirs: &[std::path::PathBuf],
+    diags: &mut Vec<Diagnostic>,
+) -> Option<np_syntax::Program> {
+    use np_syntax::{Item, Program};
+    use std::collections::HashSet;
+    use std::fs;
+
+    let mut out_items = Vec::new();
+    let mut loaded = HashSet::new();
+    let mut queue: Vec<(String, Vec<String>, np_syntax::Span)> = Vec::new();
+
+    for item in &program.items {
+        if let Item::Use(u) = item {
+            queue.push((from_file.to_string(), u.path.clone(), u.span));
+        }
+    }
+
+    while let Some((origin, segs, span)) = queue.pop() {
+        let key = segs.join("/");
+        if !loaded.insert(key.clone()) {
+            continue;
+        }
+        let rel = format!("{}.lhs", segs.join("/"));
+        let mut found: Option<std::path::PathBuf> = None;
+        for dir in search_dirs {
+            let candidate = dir.join(&rel);
+            if candidate.is_file() {
+                found = Some(candidate);
+                break;
+            }
+        }
+        let Some(mod_path) = found else {
+            diags.push(Diagnostic {
+                file: origin,
+                start: span.start,
+                end: span.end,
+                code: "E0300".into(),
+                message: format!(
+                    "cannot find module `{}` (looked for `{rel}` under search paths)",
+                    segs.join(".")
+                ),
+                help: Some(
+                    "place the file in stdlib/ or next to the source; see `lhsc lib`".into(),
+                ),
+                warning: false,
+            });
+            continue;
+        };
+        let text = match fs::read_to_string(&mod_path) {
+            Ok(t) => t,
+            Err(e) => {
+                diags.push(Diagnostic {
+                    file: origin,
+                    start: span.start,
+                    end: span.end,
+                    code: "E0301".into(),
+                    message: format!("cannot read {}: {e}", mod_path.display()),
+                    help: None,
+                    warning: false,
+                });
+                continue;
+            }
+        };
+        let mod_name = mod_path.display().to_string();
+        match np_syntax::parse_file(&mod_name, text) {
+            Ok((_, mod_prog)) => {
+                for item in mod_prog.items {
+                    match item {
+                        Item::Use(u) => {
+                            queue.push((mod_name.clone(), u.path, u.span));
+                        }
+                        other => out_items.push(other),
+                    }
+                }
+            }
+            Err(e) => {
+                diags.push(Diagnostic::from(e));
+            }
+        }
+    }
+
+    if diags.iter().any(|d| d.is_error()) {
+        return None;
+    }
+
+    // Main file items last so they can override? Prefer main last; libs first.
+    for item in &program.items {
+        if !matches!(item, Item::Use(_)) {
+            out_items.push(item.clone());
+        }
+    }
+    Some(Program { items: out_items })
 }
 
 #[cfg(test)]

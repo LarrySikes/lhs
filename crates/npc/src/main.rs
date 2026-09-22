@@ -6,7 +6,7 @@ use std::process;
 use lhs_jit::{build_aot, is_jit_supported, run_jit};
 use np_codegen::{build_native, compile_c_to_binary, emit_c};
 use np_eval::run_program_stdout;
-use np_hir::{check, Diagnostic};
+use np_hir::{check_with_imports, Diagnostic};
 use np_syntax::format_program;
 use serde::Serialize;
 
@@ -22,18 +22,16 @@ struct JsonDiag<'a> {
 
 fn usage() -> ! {
     eprintln!(
-        "lhsc — LHS compiler v0.4\n\n\
+        "lhsc — LHS compiler v0.6\n\n\
          Usage:\n\
            lhsc check [--json] <file.lhs>\n\
            lhsc run [--jit] <file.lhs>\n\
-           lhsc watch [--jit] <file.lhs>   # re-run on file change (hot reload)\n\
+           lhsc watch [--jit] <file.lhs>   # re-run on file change\n\
            lhsc fmt [--write] <file.lhs>\n\
            lhsc test [examples_dir]\n\
-           lhsc build <file.lhs> [-o outfile] [--emit=c|cranelift]\n\
-             default: native binary (embeds source, links liblhs_rt)\n\
-             --emit=c: subset AOT via C translator\n\
-             --emit=cranelift: subset AOT via Cranelift (true native)\n\
-             run --jit: Cranelift JIT for the same subset\n\n\
+           lhsc lib                        # list stdlib modules + builtins\n\
+           lhsc build <file.lhs> [-o outfile] [--emit=c|cranelift]\n\n\
+         Modules: `use math` loads stdlib/math.lhs (see docs/PACKAGES.md).\n\
          Language: LHS. Compiler implemented in Rust.\n"
     );
     process::exit(2);
@@ -41,6 +39,33 @@ fn usage() -> ! {
 
 fn has_errors(diags: &[Diagnostic]) -> bool {
     diags.iter().any(|d| d.is_error())
+}
+
+fn workspace_root() -> PathBuf {
+    // crates/npc -> repo root
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|p| p.parent())
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+fn search_dirs_for(file: &Path) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Ok(extra) = env::var("LHS_PATH") {
+        for part in extra.split(':') {
+            if !part.is_empty() {
+                dirs.push(PathBuf::from(part));
+            }
+        }
+    }
+    let root = workspace_root();
+    dirs.push(root.join("stdlib"));
+    if let Some(parent) = file.parent() {
+        dirs.push(parent.to_path_buf());
+    }
+    dirs.push(root);
+    dirs
 }
 
 fn print_diag(d: &Diagnostic, json: bool) {
@@ -74,7 +99,8 @@ fn load_ok(path: &Path) -> Option<np_hir::Module> {
             return None;
         }
     };
-    let (module, diags) = check(&path.display().to_string(), text);
+    let dirs = search_dirs_for(path);
+    let (module, diags) = check_with_imports(&path.display().to_string(), text, &dirs);
     for d in &diags {
         print_diag(d, false);
     }
@@ -92,7 +118,8 @@ fn cmd_check(path: &Path, json: bool) -> i32 {
             return 1;
         }
     };
-    let (module, diags) = check(&path.display().to_string(), text);
+    let dirs = search_dirs_for(path);
+    let (module, diags) = check_with_imports(&path.display().to_string(), text, &dirs);
     for d in &diags {
         print_diag(d, json);
     }
@@ -116,6 +143,55 @@ fn cmd_check(path: &Path, json: bool) -> i32 {
         }
         0
     }
+}
+
+fn cmd_lib() -> i32 {
+    println!("LHS builtins:");
+    for name in [
+        "print",
+        "eprint",
+        "read_file",
+        "write_file",
+        "read_line",
+        "str_slice",
+        "find_char",
+        "abs",
+        "min",
+        "max",
+        "assert",
+        "getenv",
+        "argc",
+        "arg",
+        "exit",
+        "sleep_ms",
+        "now_ms",
+        "gc",
+    ] {
+        println!("  {name}");
+    }
+    println!("\nstdlib modules (use <name>):");
+    let dir = workspace_root().join("stdlib");
+    let mut mods = Vec::new();
+    if let Ok(rd) = fs::read_dir(&dir) {
+        for ent in rd.flatten() {
+            let p = ent.path();
+            if p.extension().and_then(|e| e.to_str()) == Some("lhs") {
+                if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
+                    mods.push(stem.to_string());
+                }
+            }
+        }
+    }
+    mods.sort();
+    if mods.is_empty() {
+        println!("  (none found in {})", dir.display());
+    } else {
+        for m in mods {
+            println!("  {m}");
+        }
+    }
+    println!("\nSearch path: LHS_PATH + {} + <source dir>", dir.display());
+    0
 }
 
 fn cmd_run(path: &Path, use_jit: bool) -> i32 {
@@ -154,25 +230,14 @@ fn cmd_fmt(path: &Path, write: bool) -> i32 {
             return 1;
         }
     };
-    let (module, diags) = check(&path.display().to_string(), text);
-    let Some(module) = module else {
-        for d in &diags {
-            print_diag(d, false);
+    let program = match np_syntax::parse_file(&path.display().to_string(), text) {
+        Ok((_, p)) => p,
+        Err(e) => {
+            eprintln!("{e}");
+            return 1;
         }
-        return 1;
     };
-    if has_errors(&diags) {
-        for d in &diags {
-            print_diag(d, false);
-        }
-        return 1;
-    }
-    for d in &diags {
-        if d.warning {
-            print_diag(d, false);
-        }
-    }
-    let formatted = format_program(&module.program);
+    let formatted = format_program(&program);
     if write {
         if let Err(e) = fs::write(path, formatted) {
             eprintln!("lhsc: write failed: {e}");
@@ -209,7 +274,8 @@ fn cmd_test(dir: &Path) -> i32 {
         let name = path.file_name().unwrap().to_string_lossy();
         let expect_fail = name.contains("bad_type") || name.starts_with("10_");
         let text = fs::read_to_string(path).unwrap_or_default();
-        let (module, diags) = check(&path.display().to_string(), text);
+        let dirs = search_dirs_for(path);
+        let (module, diags) = check_with_imports(&path.display().to_string(), text, &dirs);
         let check_ok = !has_errors(&diags) && module.is_some();
         if expect_fail {
             if !check_ok {
@@ -257,7 +323,8 @@ fn cmd_build(path: &Path, out: &Path, emit: EmitMode) -> i32 {
             return 1;
         }
     };
-    let (module, diags) = check(&path.display().to_string(), text.clone());
+    let dirs = search_dirs_for(path);
+    let (module, diags) = check_with_imports(&path.display().to_string(), text.clone(), &dirs);
     for d in &diags {
         print_diag(d, false);
     }
@@ -301,16 +368,19 @@ fn cmd_build(path: &Path, out: &Path, emit: EmitMode) -> i32 {
                 }
             }
         }
-        EmitMode::Embed => match build_native(&text, &out.display().to_string()) {
-            Ok(()) => {
-                eprintln!("lhsc: built {}", out.display());
-                0
+        EmitMode::Embed => {
+            let merged = format_program(&module.program);
+            match build_native(&merged, &out.display().to_string()) {
+                Ok(()) => {
+                    eprintln!("lhsc: built {}", out.display());
+                    0
+                }
+                Err(e) => {
+                    eprintln!("lhsc: build failed: {}", e.message);
+                    1
+                }
             }
-            Err(e) => {
-                eprintln!("lhsc: build failed: {}", e.message);
-                1
-            }
-        },
+        }
     }
 }
 
@@ -427,6 +497,7 @@ fn main() {
                 .unwrap_or_else(|| "examples".into());
             process::exit(cmd_test(Path::new(&dir)));
         }
+        "lib" => process::exit(cmd_lib()),
         "build" => {
             let mut out: Option<String> = None;
             let mut file: Option<String> = None;

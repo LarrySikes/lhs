@@ -26,6 +26,8 @@ jobs:
           cargo run -p npc --bin lhsc -- run --jit examples/09_c_abi.lhs
           cargo run -p npc --bin lhsc -- run --jit examples/11_file_io.lhs
           cargo run -p npc --bin lhsc -- run --jit examples/15_parallel_busy.lhs
+          cargo run -p npc --bin lhsc -- run --jit examples/17_use_math.lhs
+          cargo run -p npc --bin lhsc -- lib
       - name: Cranelift AOT smoke
         run: |
           cargo run -p npc --bin lhsc -- build examples/05_adt.lhs -o /tmp/lhs_aot --emit=cranelift
