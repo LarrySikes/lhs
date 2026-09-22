@@ -1,5 +1,7 @@
 # LHS — v0.6 (2026) · complete
 
+**Landing page:** https://larrysikes.github.io/lhs/
+
 **LHS** is a small, memory-safe-oriented language with a Rust-hosted toolchain.
 
 **Compiler:** `lhsc` · **Sources:** `.lhs` · **License:** MIT OR Apache-2.0
