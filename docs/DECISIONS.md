@@ -12,14 +12,15 @@ ecosystem for parsers and CLIs.
 ## D2 — Memory model (MVP)
 
 **Decision:** Start with a **bump arena** for Cranelift-backed
-`Option`/`Result` cells (`lhs_make_*` in `lhs_jit`); full GC + optional
-explicit arenas later. **Not** a borrow checker in v1.  
+`Option`/`Result`/struct cells; full GC + optional explicit arenas later.
+**Not** a borrow checker in v1.  
 **Why:** ship a coherent safe language faster; revisit ownership once
 the frontend and tooling exist.  
 **Constraint:** no raw unchecked pointers in user code; `unsafe` block
 is a later, rare escape hatch.  
-**Status (2026):** bump heap lives in the Cranelift host/stubs; interpreter
-still uses Rust `Value` heap. Next: share one allocator with `lhs_rt`.
+**Status (v0.4, 2026):** shared Rust crate `lhs_mem` used by Cranelift JIT
+and reset from `lhs_rt`; AOT stubs keep a matching C bump. Interpreter still
+uses Rust `Value` heap.
 
 ## D3 — Syntax family
 
@@ -30,24 +31,23 @@ programmers; indentation languages fight copy/paste and tooling.
 
 ## D4 — Concurrency (MVP)
 
-**Decision:** structured `task` / `await` with a single-threaded async
-runtime first; data-race freedom via no shared mutable aliasing across
-tasks (message or immutable share).  
+**Decision:** structured `task` / `await`; **parallel OS threads** (v0.4)
+with no shared mutable LHS state across tasks (each task computes a value;
+`await` joins).  
 **Why:** explicit control without requiring a full actor runtime day one.
 
 ## D5 — Backend
 
-**Decision (v0.2–v0.3, 2026):** three native paths:
+**Decision (v0.4, 2026):** three native paths:
 
 1. **Default `lhsc build`** — embed `.lhs` + link `liblhs_rt.a` (full language).
 2. **`--emit=c`** — subset C translator (no ADT/match/methods).
 3. **`--emit=cranelift` / `run --jit`** — Cranelift object AOT and in-process
    JIT for numeric/`f64`/`print`/stdlib/`task`, Option/Result, **custom ADTs**
    (≤2 fields), **structs + receiver methods**, `match`/`is`/`unwrap`, string
-   len/index/eq, **file I/O**. Still not: `extern "C"` / unsafe FFI.
+   len/index/eq, **file I/O**, **`extern "C"`** (e.g. `puts`), **parallel tasks**.
 
-**Post-v0.3:** shared GC with `lhs_rt`; real `extern` linking in Cranelift;
-parallel tasks.  
+**Post-v0.4 optional:** full GC; richer libc bindings; package ecosystem.  
 **Why:** Completes the manifesto “ship runnable natives” goal without blocking
 on every language feature in the optimizing path.
 

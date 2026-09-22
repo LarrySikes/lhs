@@ -1,36 +1,35 @@
-LHS STATUS — v0.3 (2026-09-21)
+LHS STATUS — v0.4 (2026-09-21)
 ================================
 
 WHAT THIS IS
   LHS = general-purpose language (ease + native code + safety story).
   CLI = lhsc. Sources = *.lhs. Repo = ~/src/newproj.
 
-  Separate from IWAI/UCC (~/src/iwai_project) which is the compute /
-  hardware-optimizer idea. See HOW_WE_GOT_HERE.txt in both places.
+  Separate from IWAI/UCC (~/src/iwai_project). See HOW_WE_GOT_HERE.txt.
 
-DONE (MVP / v0.3)
+DONE (north-star / v0.4)
   - Parser, typechecker, formatter, JSON diagnostics
-  - Interpreter: full language (examples 01–14)
+  - Interpreter: full language + parallel task/await (OS threads)
   - Default native build: embed source + liblhs_rt
-  - Cranelift JIT + AOT: numbers, f64, strings, Option/Result,
-    custom ADTs (<=2 fields), structs + methods, match, stdlib,
-    read_file/write_file, sync task/await
-  - Day planner sample (CLI): apps/day_planner.lhs
+  - Shared bump arena: crates/lhs_mem (JIT host + lhs_rt reset)
+  - Cranelift JIT + AOT: ADTs, structs/methods, file I/O, extern "C",
+    parallel tasks, stdlib
+  - lhsc watch — re-run on file change (hot reload)
+  - Day planner sample; examples 01–15
   - CI workflow, dual license, docs
 
-STILL OPEN (north star, not blocking "finish MVP")
-  - Shared GC / arenas (MEMORY.md) instead of only bump + Rust heap
-  - Parallel structured tasks (today: sync demo)
-  - Cranelift linking of real extern "C" (example 09 still uses interpreter/embed)
-  - Hot reload / richer agent loop tooling
+HONEST LIMITS (not blockers for "complete")
+  - No full mark-sweep GC yet (bump + Rust Value heap; reset per run)
+  - No package ecosystem / large stdlib
+  - Not production-hardened (see manifesto non-goals)
 
 HOW TO CHECK
   cd ~/src/newproj
   cargo test --workspace
   cargo run -p npc --bin lhsc -- test examples
-  cargo run -p npc --bin lhsc -- run --jit examples/06_struct_method.lhs
-  cargo run -p npc --bin lhsc -- run --jit examples/11_file_io.lhs
+  cargo run -p npc --bin lhsc -- run --jit examples/09_c_abi.lhs
+  cargo run -p npc --bin lhsc -- watch examples/01_hello.lhs
 
-NEXT PRODUCT CHOICE (when ready)
-  A) Keep polishing LHS (GC, parallel, extern AOT)
+NEXT (optional product choice)
+  A) Harden LHS for real users (GC, packages, more libc bindings)
   B) Return to IWAI/UCC from ~/src/iwai_project notes

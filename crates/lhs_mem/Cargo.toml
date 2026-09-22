@@ -1,0 +1,10 @@
+[package]
+name = "lhs_mem"
+version.workspace = true
+edition.workspace = true
+description = "Shared bump arena for LHS Cranelift hosts and runtimes"
+
+[lib]
+name = "lhs_mem"
+crate-type = ["staticlib", "rlib"]
+path = "src/lib.rs"

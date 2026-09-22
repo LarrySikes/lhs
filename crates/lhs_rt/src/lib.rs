@@ -15,6 +15,7 @@ pub unsafe extern "C" fn lhs_run_source(src: *const c_char) -> i32 {
         eprintln!("lhs_rt: null source");
         return 2;
     }
+    lhs_mem::reset();
     let cstr = unsafe { CStr::from_ptr(src) };
     let text = match cstr.to_str() {
         Ok(s) => s.to_string(),

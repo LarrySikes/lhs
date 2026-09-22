@@ -1,4 +1,4 @@
-# 08 — structured concurrency (shape)
+# 08 — structured concurrency (parallel)
 
 fn work(id: i32) -> i32 {
     id * 2

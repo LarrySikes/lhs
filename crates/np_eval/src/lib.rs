@@ -1,10 +1,18 @@
-//! Tree-walking interpreter for `.lhs` programs (MVP before native codegen).
+//! Tree-walking interpreter for `.lhs` programs.
 
 use std::collections::HashMap;
 use std::fmt;
 use std::io::{self, Write};
+use std::sync::{Arc, Mutex};
+use std::thread::{self, JoinHandle};
 
 use np_syntax::{BinOp, Block, Expr, FnItem, Item, Pat, Program, Stmt, TypeItem};
+
+/// Handle for a parallel `task { ... }` (join once via `await`).
+#[derive(Debug)]
+pub struct TaskHandle {
+    inner: Mutex<Option<JoinHandle<Result<Value>>>>,
+}
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -19,6 +27,8 @@ pub enum Value {
         fields: HashMap<String, Value>,
         positional: Vec<Value>,
     },
+    /// Parallel task; `await` joins. Shared via Arc so env can clone.
+    Task(Arc<TaskHandle>),
 }
 
 impl fmt::Display for Value {
@@ -30,6 +40,7 @@ impl fmt::Display for Value {
             Value::Float(x) => write!(f, "{x}"),
             Value::Str(s) => write!(f, "{s}"),
             Value::Char(c) => write!(f, "{c}"),
+            Value::Task(_) => write!(f, "<task>"),
             Value::Variant {
                 name,
                 fields,
@@ -82,6 +93,8 @@ struct Interpreter<'a, W: Write> {
     #[allow(dead_code)]
     types: HashMap<String, &'a TypeItem>,
     out: W,
+    /// Shared program for worker threads (same contents as `program`).
+    program_arc: Arc<Program>,
 }
 
 impl<'a, W: Write> Interpreter<'a, W> {
@@ -241,10 +254,50 @@ impl<'a, W: Write> Interpreter<'a, W> {
                 }
             }
             Expr::Call { callee, args, .. } => self.eval_call(env, callee, args),
-            Expr::Block { body, .. } | Expr::Task { body, .. } | Expr::Unsafe { body, .. } => {
-                self.eval_block(env, body)
+            Expr::Block { body, .. } | Expr::Unsafe { body, .. } => self.eval_block(env, body),
+            Expr::Task { body, .. } => {
+                let program = Arc::clone(&self.program_arc);
+                let body = body.clone();
+                let handle = thread::spawn(move || {
+                    let mut types = HashMap::new();
+                    for item in &program.items {
+                        if let Item::Type(t) = item {
+                            types.insert(t.name.clone(), t);
+                        }
+                    }
+                    let mut worker = Interpreter {
+                        program: &program,
+                        types,
+                        out: io::sink(),
+                        program_arc: Arc::clone(&program),
+                    };
+                    let mut local = HashMap::new();
+                    match worker.eval_block(&mut local, &body) {
+                        Err(EvalError::Return(v)) => Ok(v),
+                        other => other,
+                    }
+                });
+                Ok(Value::Task(Arc::new(TaskHandle {
+                    inner: Mutex::new(Some(handle)),
+                })))
             }
-            Expr::Await { inner, .. } => self.eval_expr(env, inner),
+            Expr::Await { inner, .. } => {
+                let v = self.eval_expr(env, inner)?;
+                match v {
+                    Value::Task(t) => {
+                        let handle = t
+                            .inner
+                            .lock()
+                            .map_err(|_| err("task lock poisoned"))?
+                            .take()
+                            .ok_or_else(|| err("task already awaited"))?;
+                        handle
+                            .join()
+                            .map_err(|_| err("task panicked"))?
+                    }
+                    other => Ok(other),
+                }
+            }
         }
     }
 
@@ -606,16 +659,18 @@ fn match_pat(v: &Value, pat: &Pat, binds: &mut HashMap<String, Value>) -> bool {
 }
 
 pub fn run_program(program: &Program, out: impl Write) -> Result<Value> {
+    let program_arc = Arc::new(program.clone());
     let mut types = HashMap::new();
-    for item in &program.items {
+    for item in &program_arc.items {
         if let Item::Type(t) = item {
             types.insert(t.name.clone(), t);
         }
     }
     let mut interp = Interpreter {
-        program,
+        program: &program_arc,
         types,
         out,
+        program_arc: Arc::clone(&program_arc),
     };
     interp.run_main()
 }

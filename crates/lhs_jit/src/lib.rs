@@ -3,21 +3,23 @@
 //! - `lhsc run --jit` — in-process JIT
 //! - `lhsc build --emit=cranelift` — object file + link (true AOT)
 //!
-//! Subset: numeric/`f64`/strings, Option/Result/custom ADTs, structs + receiver
-//! methods, match/`is`/`unwrap`, stdlib, file I/O, sync task/await.
-//! Still embed/interpret: `extern "C"` / unsafe FFI.
+//! Subset: numeric/`f64`/strings, Option/Result/custom ADTs, structs + methods,
+//! match/`is`/`unwrap`, stdlib, file I/O, `extern "C"` (e.g. `puts`), parallel
+//! `task`/`await` via host spawn/join. Bump heap lives in `lhs_mem`.
 
 use cranelift::codegen::ir::UserFuncName;
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{DataDescription, FuncId, Linkage, Module, default_libcall_names};
 use cranelift_object::{ObjectBuilder, ObjectModule};
-use np_syntax::{BinOp, Expr, FnItem, Item, Pat, Program, Stmt, TypeBody, TypeRef};
+use np_syntax::{BinOp, Block, Expr, FnItem, Item, Pat, Program, Stmt, TypeBody, TypeRef};
 use std::collections::{HashMap, HashSet};
-use std::ffi::{CStr, CString};
+use std::ffi::CStr;
 use std::mem;
 use std::process::Command;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::{LazyLock, Mutex};
+use std::thread;
 
 const BUILTINS: &[&str] = &[
     "print",
@@ -49,7 +51,7 @@ fn err(msg: impl Into<String>) -> JitError {
     }
 }
 
-/* ---- bump heap for Option/Result cells (first GC/arena step, D2) ---- */
+/* ---- bump heap via shared lhs_mem (D2) ---- */
 
 #[repr(C)]
 struct Cell {
@@ -58,23 +60,35 @@ struct Cell {
     extra: i64,
 }
 
-static HEAP: Mutex<Vec<u8>> = Mutex::new(Vec::new());
-
 fn heap_reset() {
-    let mut h = HEAP.lock().unwrap();
-    h.clear();
-    h.reserve(1 << 20);
+    lhs_mem::reset();
 }
 
 unsafe fn heap_alloc(n: usize) -> *mut u8 {
-    let mut h = HEAP.lock().unwrap();
-    let align = 8;
-    let len = h.len();
-    let pad = (align - (len % align)) % align;
-    h.resize(len + pad, 0);
-    let start = h.len();
-    h.resize(start + n, 0);
-    unsafe { h.as_mut_ptr().add(start) }
+    unsafe { lhs_mem::alloc(n) }
+}
+
+/* ---- parallel task registry ---- */
+
+static TASK_NEXT: AtomicI64 = AtomicI64::new(1);
+static TASKS: LazyLock<Mutex<HashMap<i64, thread::JoinHandle<i64>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+unsafe extern "C" fn host_spawn(fptr: i64) -> i64 {
+    let f: extern "C" fn() -> i64 = unsafe { mem::transmute(fptr) };
+    let id = TASK_NEXT.fetch_add(1, Ordering::Relaxed);
+    let handle = thread::spawn(move || f());
+    TASKS.lock().unwrap().insert(id, handle);
+    id
+}
+
+unsafe extern "C" fn host_join(id: i64) -> i64 {
+    let handle = TASKS
+        .lock()
+        .unwrap()
+        .remove(&id)
+        .expect("lhs: join unknown task");
+    handle.join().unwrap_or(0)
 }
 
 unsafe extern "C" fn host_print_i64(n: i64) {
@@ -275,18 +289,25 @@ fn pat_ok(p: &Pat) -> bool {
     }
 }
 
-fn expr_ok(e: &Expr, user_fns: &HashSet<&str>, user_methods: &HashSet<String>) -> bool {
+fn expr_ok(
+    e: &Expr,
+    user_fns: &HashSet<&str>,
+    user_methods: &HashSet<String>,
+    extern_fns: &HashSet<&str>,
+) -> bool {
     match e {
         Expr::Ident { .. }
         | Expr::Int { .. }
         | Expr::Float { .. }
         | Expr::Str { .. }
-        | Expr::Char { .. } => true,
+        | Expr::Char { .. }
+        | Expr::CStr { .. } => true,
         Expr::Binary { lhs, rhs, .. } => {
-            expr_ok(lhs, user_fns, user_methods) && expr_ok(rhs, user_fns, user_methods)
+            expr_ok(lhs, user_fns, user_methods, extern_fns)
+                && expr_ok(rhs, user_fns, user_methods, extern_fns)
         }
         Expr::Group { inner, .. } | Expr::Cast { expr: inner, .. } | Expr::Await { inner, .. } => {
-            expr_ok(inner, user_fns, user_methods)
+            expr_ok(inner, user_fns, user_methods, extern_fns)
         }
         Expr::If {
             cond,
@@ -294,62 +315,76 @@ fn expr_ok(e: &Expr, user_fns: &HashSet<&str>, user_methods: &HashSet<String>) -
             else_block,
             ..
         } => {
-            expr_ok(cond, user_fns, user_methods)
+            expr_ok(cond, user_fns, user_methods, extern_fns)
                 && then_block
                     .stmts
                     .iter()
-                    .all(|s| stmt_ok(s, user_fns, user_methods))
+                    .all(|s| stmt_ok(s, user_fns, user_methods, extern_fns))
                 && else_block
                     .as_ref()
-                    .map(|b| b.stmts.iter().all(|s| stmt_ok(s, user_fns, user_methods)))
+                    .map(|b| {
+                        b.stmts
+                            .iter()
+                            .all(|s| stmt_ok(s, user_fns, user_methods, extern_fns))
+                    })
                     .unwrap_or(true)
         }
         Expr::Match {
             scrutinee, arms, ..
         } => {
-            expr_ok(scrutinee, user_fns, user_methods)
-                && arms
-                    .iter()
-                    .all(|a| pat_ok(&a.pat) && expr_ok(&a.body, user_fns, user_methods))
+            expr_ok(scrutinee, user_fns, user_methods, extern_fns)
+                && arms.iter().all(|a| {
+                    pat_ok(&a.pat) && expr_ok(&a.body, user_fns, user_methods, extern_fns)
+                })
         }
         Expr::Index { base, index, .. } => {
-            expr_ok(base, user_fns, user_methods) && expr_ok(index, user_fns, user_methods)
+            expr_ok(base, user_fns, user_methods, extern_fns)
+                && expr_ok(index, user_fns, user_methods, extern_fns)
         }
-        Expr::Is { expr, .. } => expr_ok(expr, user_fns, user_methods),
+        Expr::Is { expr, .. } => expr_ok(expr, user_fns, user_methods, extern_fns),
         Expr::StructLit { fields, .. } => fields
             .iter()
-            .all(|(_, e)| expr_ok(e, user_fns, user_methods)),
+            .all(|(_, e)| expr_ok(e, user_fns, user_methods, extern_fns)),
         Expr::Call { callee, args, .. } => {
             let callee_ok = match callee.as_ref() {
                 Expr::Ident { name, .. } => {
-                    BUILTINS.contains(&name.as_str()) || user_fns.contains(name.as_str())
+                    BUILTINS.contains(&name.as_str())
+                        || user_fns.contains(name.as_str())
+                        || extern_fns.contains(name.as_str())
                 }
                 Expr::Field { name, base, .. } => {
-                    expr_ok(base, user_fns, user_methods)
+                    expr_ok(base, user_fns, user_methods, extern_fns)
                         && (BUILTIN_METHODS.contains(&name.as_str())
                             || user_methods.iter().any(|m| m.ends_with(&format!(".{name}"))))
                 }
                 _ => false,
             };
-            callee_ok && args.iter().all(|a| expr_ok(a, user_fns, user_methods))
+            callee_ok
+                && args
+                    .iter()
+                    .all(|a| expr_ok(a, user_fns, user_methods, extern_fns))
         }
-        Expr::Field { base, .. } => expr_ok(base, user_fns, user_methods),
-        Expr::Task { body, .. } | Expr::Unsafe { body, .. } => {
-            body.stmts
-                .iter()
-                .all(|s| stmt_ok(s, user_fns, user_methods))
-        }
+        Expr::Field { base, .. } => expr_ok(base, user_fns, user_methods, extern_fns),
+        Expr::Task { body, .. } | Expr::Unsafe { body, .. } => body
+            .stmts
+            .iter()
+            .all(|s| stmt_ok(s, user_fns, user_methods, extern_fns)),
         _ => false,
     }
 }
 
-fn stmt_ok(s: &Stmt, user_fns: &HashSet<&str>, user_methods: &HashSet<String>) -> bool {
+fn stmt_ok(
+    s: &Stmt,
+    user_fns: &HashSet<&str>,
+    user_methods: &HashSet<String>,
+    extern_fns: &HashSet<&str>,
+) -> bool {
     match s {
-        Stmt::Let { init, .. } => expr_ok(init, user_fns, user_methods),
-        Stmt::Expr(e) => expr_ok(e, user_fns, user_methods),
+        Stmt::Let { init, .. } => expr_ok(init, user_fns, user_methods, extern_fns),
+        Stmt::Expr(e) => expr_ok(e, user_fns, user_methods, extern_fns),
         Stmt::Return { value, .. } => value
             .as_ref()
-            .map(|e| expr_ok(e, user_fns, user_methods))
+            .map(|e| expr_ok(e, user_fns, user_methods, extern_fns))
             .unwrap_or(true),
     }
 }
@@ -368,20 +403,30 @@ pub fn is_jit_supported(program: &Program) -> bool {
         .items
         .iter()
         .filter_map(|i| match i {
-            Item::Fn(f) => f
-                .receiver
-                .as_ref()
-                .map(|r| format!("{r}.{}", f.name)),
+            Item::Fn(f) => f.receiver.as_ref().map(|r| format!("{r}.{}", f.name)),
             _ => None,
         })
+        .collect();
+    let extern_fns: HashSet<&str> = program
+        .items
+        .iter()
+        .filter_map(|i| match i {
+            Item::Extern(b) if b.abi == "C" => Some(b),
+            _ => None,
+        })
+        .flat_map(|b| b.items.iter().map(|f| f.name.as_str()))
         .collect();
     for item in &program.items {
         match item {
             Item::Type(_) => {}
-            Item::Extern(_) => return false,
+            Item::Extern(b) => {
+                if b.abi != "C" {
+                    return false;
+                }
+            }
             Item::Fn(f) => {
                 for stmt in &f.body.stmts {
-                    if !stmt_ok(stmt, &user_fns, &user_methods) {
+                    if !stmt_ok(stmt, &user_fns, &user_methods, &extern_fns) {
                         return false;
                     }
                 }
@@ -426,6 +471,8 @@ struct HostFns {
     fsqrt: FuncId,
     read_file: FuncId,
     write_file: FuncId,
+    spawn: FuncId,
+    join: FuncId,
 }
 
 fn decl_i64_ret0<M: Module>(module: &mut M, name: &str) -> Result<FuncId, JitError> {
@@ -515,6 +562,8 @@ fn declare_hosts<M: Module>(module: &mut M) -> Result<HostFns, JitError> {
         fsqrt: decl_i64_ret1(module, "lhs_fsqrt")?,
         read_file: decl_i64_ret1(module, "lhs_read_file")?,
         write_file: decl_i64_ret2(module, "lhs_write_file")?,
+        spawn: decl_i64_ret1(module, "lhs_spawn")?,
+        join: decl_i64_ret1(module, "lhs_join")?,
     })
 }
 
@@ -614,8 +663,11 @@ fn define_program<M: Module>(
             .declare_data(&name, Linkage::Local, false, false)
             .unwrap();
         let mut desc = DataDescription::new();
-        let c = CString::new(s.as_str()).unwrap_or_default();
-        desc.define(c.into_bytes_with_nul().into_boxed_slice());
+        let mut bytes = s.as_bytes().to_vec();
+        if !bytes.ends_with(&[0]) {
+            bytes.push(0);
+        }
+        desc.define(bytes.into_boxed_slice());
         module.define_data(id, &desc).unwrap();
         str_data.insert(s.clone(), id);
     });
@@ -628,6 +680,28 @@ fn define_program<M: Module>(
             _ => None,
         })
         .collect();
+
+    let task_bodies = collect_task_bodies(program);
+
+    // Extern "C" imports (e.g. puts)
+    let mut extern_ids: HashMap<String, FuncId> = HashMap::new();
+    for item in &program.items {
+        let Item::Extern(b) = item else { continue };
+        if b.abi != "C" {
+            continue;
+        }
+        for ef in &b.items {
+            let mut sig = module.make_signature();
+            for _ in &ef.params {
+                sig.params.push(AbiParam::new(types::I64));
+            }
+            sig.returns.push(AbiParam::new(types::I64));
+            let id = module
+                .declare_function(&ef.name, Linkage::Import, &sig)
+                .map_err(|e| err(e.to_string()))?;
+            extern_ids.insert(ef.name.clone(), id);
+        }
+    }
 
     let mut func_ids = HashMap::new();
     let mut fn_returns_str: HashMap<String, bool> = HashMap::new();
@@ -660,8 +734,20 @@ fn define_program<M: Module>(
         fn_returns_float.insert(key, ret_float);
     }
 
+    let mut task_ids: Vec<FuncId> = Vec::new();
+    for (i, _) in task_bodies.iter().enumerate() {
+        let mut sig = module.make_signature();
+        sig.returns.push(AbiParam::new(types::I64));
+        let id = module
+            .declare_function(&format!("lhs_task_{i}"), Linkage::Local, &sig)
+            .map_err(|e| err(e.to_string()))?;
+        task_ids.push(id);
+    }
+
     let mut ctx = module.make_context();
     let mut func_ctx = FunctionBuilderContext::new();
+    let mut task_queue: std::collections::VecDeque<FuncId> =
+        task_ids.iter().copied().collect();
 
     for f in &fns {
         let key = fn_key(f);
@@ -719,11 +805,13 @@ fn define_program<M: Module>(
                 struct_vars: &mut struct_vars,
                 next_var: &mut next_var,
                 func_ids: &func_ids,
+                extern_ids: &extern_ids,
                 fn_returns_str: &fn_returns_str,
                 fn_returns_float: &fn_returns_float,
                 variants: &variants,
                 str_data: &str_data,
                 hosts: &hosts,
+                task_queue: &mut task_queue,
             };
             let ret = gen.emit_block_value(&f.body.stmts)?;
             if !ret.1 {
@@ -739,7 +827,134 @@ fn define_program<M: Module>(
         module.clear_context(&mut ctx);
     }
 
+    // Define task thunks (bodies collected in program order)
+    for (i, body) in task_bodies.iter().enumerate() {
+        let id = task_ids[i];
+        let mut sig = module.make_signature();
+        sig.returns.push(AbiParam::new(types::I64));
+        ctx.func.signature = sig;
+        ctx.func.name = UserFuncName::user(0, id.as_u32());
+        {
+            let mut bcx = FunctionBuilder::new(&mut ctx.func, &mut func_ctx);
+            let entry = bcx.create_block();
+            bcx.switch_to_block(entry);
+            bcx.seal_block(entry);
+            let mut vars = HashMap::new();
+            let mut str_vars = HashMap::new();
+            let mut float_vars = HashMap::new();
+            let mut struct_vars = HashMap::new();
+            let mut next_var = 0u32;
+            let mut gen = Gen {
+                bcx: &mut bcx,
+                module,
+                vars: &mut vars,
+                str_vars: &mut str_vars,
+                float_vars: &mut float_vars,
+                struct_vars: &mut struct_vars,
+                next_var: &mut next_var,
+                func_ids: &func_ids,
+                extern_ids: &extern_ids,
+                fn_returns_str: &fn_returns_str,
+                fn_returns_float: &fn_returns_float,
+                variants: &variants,
+                str_data: &str_data,
+                hosts: &hosts,
+                task_queue: &mut task_queue,
+            };
+            let ret = gen.emit_block_value(&body.stmts)?;
+            if !ret.1 {
+                gen.bcx.ins().return_(&[ret.0]);
+            }
+            gen.bcx.seal_all_blocks();
+            drop(gen);
+            bcx.finalize();
+        }
+        module
+            .define_function(id, &mut ctx)
+            .map_err(|e| err(e.to_string()))?;
+        module.clear_context(&mut ctx);
+    }
+
     Ok(func_ids)
+}
+
+fn collect_task_bodies(program: &Program) -> Vec<&Block> {
+    let mut out = Vec::new();
+    for item in &program.items {
+        if let Item::Fn(f) = item {
+            walk_collect_tasks(&f.body.stmts, &mut out);
+        }
+    }
+    out
+}
+
+fn walk_collect_tasks<'a>(stmts: &'a [Stmt], out: &mut Vec<&'a Block>) {
+    for s in stmts {
+        match s {
+            Stmt::Let { init, .. } => walk_collect_tasks_expr(init, out),
+            Stmt::Expr(e) => walk_collect_tasks_expr(e, out),
+            Stmt::Return { value, .. } => {
+                if let Some(e) = value {
+                    walk_collect_tasks_expr(e, out);
+                }
+            }
+        }
+    }
+}
+
+fn walk_collect_tasks_expr<'a>(e: &'a Expr, out: &mut Vec<&'a Block>) {
+    match e {
+        Expr::Task { body, .. } => {
+            out.push(body);
+            walk_collect_tasks(&body.stmts, out);
+        }
+        Expr::Unsafe { body, .. } => walk_collect_tasks(&body.stmts, out),
+        Expr::Binary { lhs, rhs, .. } => {
+            walk_collect_tasks_expr(lhs, out);
+            walk_collect_tasks_expr(rhs, out);
+        }
+        Expr::Group { inner, .. }
+        | Expr::Cast { expr: inner, .. }
+        | Expr::Await { inner, .. }
+        | Expr::Is { expr: inner, .. } => walk_collect_tasks_expr(inner, out),
+        Expr::If {
+            cond,
+            then_block,
+            else_block,
+            ..
+        } => {
+            walk_collect_tasks_expr(cond, out);
+            walk_collect_tasks(&then_block.stmts, out);
+            if let Some(eb) = else_block {
+                walk_collect_tasks(&eb.stmts, out);
+            }
+        }
+        Expr::Match {
+            scrutinee, arms, ..
+        } => {
+            walk_collect_tasks_expr(scrutinee, out);
+            for a in arms {
+                walk_collect_tasks_expr(&a.body, out);
+            }
+        }
+        Expr::Index { base, index, .. } => {
+            walk_collect_tasks_expr(base, out);
+            walk_collect_tasks_expr(index, out);
+        }
+        Expr::Call { callee, args, .. } => {
+            walk_collect_tasks_expr(callee, out);
+            for a in args {
+                walk_collect_tasks_expr(a, out);
+            }
+        }
+        Expr::StructLit { fields, .. } => {
+            for (_, e) in fields {
+                walk_collect_tasks_expr(e, out);
+            }
+        }
+        Expr::Field { base, .. } => walk_collect_tasks_expr(base, out),
+        _ => {}
+    }
 }
 
 fn register_host_symbols(jit_builder: &mut JITBuilder) {
@@ -765,17 +980,25 @@ fn register_host_symbols(jit_builder: &mut JITBuilder) {
     jit_builder.symbol("lhs_fsqrt", host_fsqrt as *const u8);
     jit_builder.symbol("lhs_read_file", host_read_file as *const u8);
     jit_builder.symbol("lhs_write_file", host_write_file as *const u8);
+    jit_builder.symbol("lhs_spawn", host_spawn as *const u8);
+    jit_builder.symbol("lhs_join", host_join as *const u8);
+    // libc
+    jit_builder.symbol("puts", libc::puts as *const u8);
 }
 
 /// JIT-compile and run `main`.
 pub fn run_jit(program: &Program) -> Result<(), JitError> {
     if !is_jit_supported(program) {
         return Err(err(
-            "Cranelift subset: `extern` / unsafe FFI unsupported. Use `lhsc run` or default embed build.",
+            "Cranelift: unsupported construct. Use plain `lhsc run` or default embed build.",
         ));
     }
 
     heap_reset();
+    {
+        let mut t = TASKS.lock().unwrap();
+        t.clear();
+    }
     let isa = make_isa(false)?;
     let mut jit_builder = JITBuilder::with_isa(isa, default_libcall_names());
     register_host_symbols(&mut jit_builder);
@@ -800,6 +1023,7 @@ const STUBS_C: &str = r#"/* Generated by lhsc --emit=cranelift — bump arena + 
 #include <string.h>
 #include <math.h>
 #include <errno.h>
+#include <pthread.h>
 
 enum { TAG_NONE = 0, TAG_SOME = 1, TAG_OK = 2, TAG_ERR = 3 };
 
@@ -889,6 +1113,52 @@ int64_t lhs_fmul(int64_t a, int64_t b) { return f_to_bits(bits_to_f(a) * bits_to
 int64_t lhs_fdiv(int64_t a, int64_t b) { return f_to_bits(bits_to_f(a) / bits_to_f(b)); }
 int64_t lhs_fsqrt(int64_t a) { return f_to_bits(sqrt(bits_to_f(a))); }
 
+/* parallel tasks via pthreads */
+typedef struct { int64_t (*fn)(void); int64_t result; } LhsTaskArg;
+static pthread_mutex_t lhs_task_mu = PTHREAD_MUTEX_INITIALIZER;
+static int64_t lhs_task_next = 1;
+enum { LHS_TASK_MAX = 256 };
+static struct { int used; pthread_t th; int64_t result; } lhs_task_tab[LHS_TASK_MAX];
+
+static void *lhs_task_entry(void *p) {
+    LhsTaskArg *a = (LhsTaskArg *)p;
+    a->result = a->fn();
+    return a;
+}
+
+int64_t lhs_spawn(int64_t fptr) {
+    pthread_mutex_lock(&lhs_task_mu);
+    int64_t id = lhs_task_next++;
+    int slot = -1;
+    for (int i = 0; i < LHS_TASK_MAX; i++) {
+        if (!lhs_task_tab[i].used) { slot = i; break; }
+    }
+    if (slot < 0) { pthread_mutex_unlock(&lhs_task_mu); abort(); }
+    lhs_task_tab[slot].used = 1;
+    pthread_mutex_unlock(&lhs_task_mu);
+    LhsTaskArg *arg = (LhsTaskArg *)malloc(sizeof(LhsTaskArg));
+    arg->fn = (int64_t(*)(void))(uintptr_t)fptr;
+    arg->result = 0;
+    if (pthread_create(&lhs_task_tab[slot].th, NULL, lhs_task_entry, arg) != 0) abort();
+    /* stash arg pointer in result temporarily via thread join */
+    lhs_task_tab[slot].result = (int64_t)(uintptr_t)arg;
+    return id * 1000 + slot; /* encode id+slot */
+}
+
+int64_t lhs_join(int64_t handle) {
+    int slot = (int)(handle % 1000);
+    if (slot < 0 || slot >= LHS_TASK_MAX) abort();
+    void *ret = NULL;
+    pthread_join(lhs_task_tab[slot].th, &ret);
+    LhsTaskArg *arg = (LhsTaskArg *)ret;
+    int64_t r = arg ? arg->result : 0;
+    free(arg);
+    pthread_mutex_lock(&lhs_task_mu);
+    lhs_task_tab[slot].used = 0;
+    pthread_mutex_unlock(&lhs_task_mu);
+    return r;
+}
+
 int64_t lhs_read_file(int64_t path) {
     if (!path) return lhs_make_err(lhs_heap_cstr("null path"));
     FILE *f = fopen((const char *)(uintptr_t)path, "rb");
@@ -928,7 +1198,7 @@ int main(void) { lhs_main(); return 0; }
 pub fn build_aot(program: &Program, out_path: &str) -> Result<(), JitError> {
     if !is_jit_supported(program) {
         return Err(err(
-            "--emit=cranelift: outside subset (`extern` needs default embed build)",
+            "--emit=cranelift: unsupported construct (use default embed build)",
         ));
     }
 
@@ -947,7 +1217,7 @@ pub fn build_aot(program: &Program, out_path: &str) -> Result<(), JitError> {
     std::fs::write(&stubs_path, STUBS_C).map_err(|e| err(e.to_string()))?;
 
     let status = Command::new("cc")
-        .args([&obj_path, &stubs_path, "-lm", "-o", out_path])
+        .args([&obj_path, &stubs_path, "-lm", "-lpthread", "-o", out_path])
         .status()
         .map_err(|e| err(format!("failed to run cc: {e}")))?;
     let _ = std::fs::remove_file(&obj_path);
@@ -982,7 +1252,7 @@ fn walk_stmts(stmts: &[Stmt], f: &mut dyn FnMut(&String)) {
 
 fn walk_expr(e: &Expr, f: &mut dyn FnMut(&String)) {
     match e {
-        Expr::Str { value, .. } => f(value),
+        Expr::Str { value, .. } | Expr::CStr { value, .. } => f(value),
         Expr::Binary { lhs, rhs, .. } => {
             walk_expr(lhs, f);
             walk_expr(rhs, f);
@@ -1041,11 +1311,13 @@ struct Gen<'a, 'b, M: Module> {
     struct_vars: &'a mut HashMap<String, String>,
     next_var: &'a mut u32,
     func_ids: &'a HashMap<String, FuncId>,
+    extern_ids: &'a HashMap<String, FuncId>,
     fn_returns_str: &'a HashMap<String, bool>,
     fn_returns_float: &'a HashMap<String, bool>,
     variants: &'a HashMap<String, VariantInfo>,
     str_data: &'a HashMap<String, cranelift_module::DataId>,
     hosts: &'a HostFns,
+    task_queue: &'a mut std::collections::VecDeque<FuncId>,
 }
 
 impl<M: Module> Gen<'_, '_, M> {
@@ -1119,7 +1391,7 @@ impl<M: Module> Gen<'_, '_, M> {
 
     fn expr_is_str(&self, e: &Expr) -> bool {
         match e {
-            Expr::Str { .. } => true,
+            Expr::Str { .. } | Expr::CStr { .. } => true,
             Expr::Ident { name, .. } => self.str_vars.get(name).copied().unwrap_or(false),
             Expr::Group { inner, .. }
             | Expr::Cast { expr: inner, .. }
@@ -1276,7 +1548,7 @@ impl<M: Module> Gen<'_, '_, M> {
                     .ok_or_else(|| err(format!("undefined `{name}`")))?;
                 Ok(self.bcx.use_var(*v))
             }
-            Expr::Str { value, .. } => {
+            Expr::Str { value, .. } | Expr::CStr { value, .. } => {
                 let id = self
                     .str_data
                     .get(value)
@@ -1285,8 +1557,11 @@ impl<M: Module> Gen<'_, '_, M> {
                 Ok(self.bcx.ins().global_value(types::I64, gv))
             }
             Expr::Group { inner, .. }
-            | Expr::Cast { expr: inner, .. }
-            | Expr::Await { inner, .. } => self.emit_expr(inner),
+            | Expr::Cast { expr: inner, .. } => self.emit_expr(inner),
+            Expr::Await { inner, .. } => {
+                let v = self.emit_expr(inner)?;
+                Ok(self.call1(self.hosts.join, v))
+            }
             Expr::Binary { op, lhs, rhs, .. } => {
                 let a = self.emit_expr(lhs)?;
                 let b = self.emit_expr(rhs)?;
@@ -1438,9 +1713,16 @@ impl<M: Module> Gen<'_, '_, M> {
                 scrutinee, arms, ..
             } => self.emit_match(scrutinee, arms),
             Expr::Call { callee, args, .. } => self.emit_call(callee, args),
-            Expr::Task { body, .. } | Expr::Unsafe { body, .. } => {
-                Ok(self.emit_block_value(&body.stmts)?.0)
+            Expr::Task { body: _, .. } => {
+                let tid = self
+                    .task_queue
+                    .pop_front()
+                    .ok_or_else(|| err("internal: task thunk missing"))?;
+                let fref = self.module.declare_func_in_func(tid, self.bcx.func);
+                let fptr = self.bcx.ins().func_addr(types::I64, fref);
+                Ok(self.call1(self.hosts.spawn, fptr))
             }
+            Expr::Unsafe { body, .. } => Ok(self.emit_block_value(&body.stmts)?.0),
             _ => Err(err("unsupported expression in Cranelift subset")),
         }
     }
@@ -1742,6 +2024,15 @@ impl<M: Module> Gen<'_, '_, M> {
                 Ok(self.bcx.ins().iconst(types::I64, 0))
             }
             _ => {
+                if let Some(fid) = self.extern_ids.get(name) {
+                    let mut arg_vs = Vec::new();
+                    for a in args {
+                        arg_vs.push(self.emit_expr(a)?);
+                    }
+                    let fref = self.module.declare_func_in_func(*fid, self.bcx.func);
+                    let call = self.bcx.ins().call(fref, &arg_vs);
+                    return Ok(self.bcx.inst_results(call)[0]);
+                }
                 let fid = self
                     .func_ids
                     .get(name)

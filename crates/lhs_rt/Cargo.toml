@@ -13,3 +13,4 @@ path = "src/lib.rs"
 np_syntax = { path = "../np_syntax" }
 np_hir = { path = "../np_hir" }
 np_eval = { path = "../np_eval" }
+lhs_mem = { path = "../lhs_mem" }

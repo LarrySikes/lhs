@@ -41,9 +41,9 @@ A small language that:
 (embed + `liblhs_rt`), Cranelift JIT/AOT including Option/Result/**custom ADTs**,
 match exhaustiveness warnings, and agent docs.
 
-**v0.3 (2026)** closes the main Cranelift gaps: **structs**, **receiver methods**,
-**file I/O**. Remaining north-star work (GC, parallel tasks, Cranelift `extern`,
-hot reload) is post-MVP.
+**v0.4 (2026)** completes the north-star checklist for this repo: shared
+`lhs_mem` bump, parallel tasks, Cranelift `extern "C"`, and `lhsc watch`
+hot reload. Remaining work is hardening/ecosystem, not MVP gaps.
 
 ## Relationship to iwbc
 

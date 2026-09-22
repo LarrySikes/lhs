@@ -22,10 +22,11 @@ struct JsonDiag<'a> {
 
 fn usage() -> ! {
     eprintln!(
-        "lhsc — LHS compiler v0.2\n\n\
+        "lhsc — LHS compiler v0.4\n\n\
          Usage:\n\
            lhsc check [--json] <file.lhs>\n\
            lhsc run [--jit] <file.lhs>\n\
+           lhsc watch [--jit] <file.lhs>   # re-run on file change (hot reload)\n\
            lhsc fmt [--write] <file.lhs>\n\
            lhsc test [examples_dir]\n\
            lhsc build <file.lhs> [-o outfile] [--emit=c|cranelift]\n\
@@ -124,7 +125,7 @@ fn cmd_run(path: &Path, use_jit: bool) -> i32 {
     if use_jit {
         if !is_jit_supported(&module.program) {
             eprintln!(
-                "lhsc: --jit: outside subset (`extern` / unsafe FFI need plain `lhsc run` or embed build)."
+                "lhsc: --jit: unsupported construct for Cranelift; use plain `lhsc run` or embed build."
             );
             return 1;
         }
@@ -313,6 +314,35 @@ fn cmd_build(path: &Path, out: &Path, emit: EmitMode) -> i32 {
     }
 }
 
+fn cmd_watch(path: &Path, use_jit: bool) -> i32 {
+    use std::time::{Duration, SystemTime};
+    eprintln!(
+        "lhsc watch: {} (Ctrl-C to stop){}",
+        path.display(),
+        if use_jit { " [--jit]" } else { "" }
+    );
+    let mut last: Option<SystemTime> = None;
+    loop {
+        let modified = match fs::metadata(path).and_then(|m| m.modified()) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("lhsc watch: cannot stat {}: {e}", path.display());
+                std::thread::sleep(Duration::from_millis(500));
+                continue;
+            }
+        };
+        if last.map(|t| t != modified).unwrap_or(true) {
+            last = Some(modified);
+            eprintln!("---- lhsc watch: run {} ----", path.display());
+            let code = cmd_run(path, use_jit);
+            if code != 0 {
+                eprintln!("lhsc watch: exit {code}");
+            }
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+}
+
 #[derive(Clone, Copy)]
 enum EmitMode {
     Embed,
@@ -358,6 +388,22 @@ fn main() {
             }
             let Some(file) = file else { usage() };
             process::exit(cmd_run(Path::new(&file), use_jit));
+        }
+        "watch" => {
+            let mut use_jit = false;
+            let mut file: Option<String> = None;
+            for a in args {
+                if a == "--jit" {
+                    use_jit = true;
+                } else if a.starts_with('-') {
+                    eprintln!("lhsc: unknown flag {a}");
+                    usage();
+                } else {
+                    file = Some(a);
+                }
+            }
+            let Some(file) = file else { usage() };
+            process::exit(cmd_watch(Path::new(&file), use_jit));
         }
         "fmt" => {
             let mut write = false;

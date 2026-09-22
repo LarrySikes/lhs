@@ -13,5 +13,6 @@ np_hir = { path = "../np_hir" }
 np_eval = { path = "../np_eval" }
 np_codegen = { path = "../np_codegen" }
 lhs_jit = { path = "../lhs_jit" }
+lhs_mem = { path = "../lhs_mem" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
