@@ -1,0 +1,36 @@
+LHS STATUS — v0.3 (2026-09-21)
+================================
+
+WHAT THIS IS
+  LHS = general-purpose language (ease + native code + safety story).
+  CLI = lhsc. Sources = *.lhs. Repo = ~/src/newproj.
+
+  Separate from IWAI/UCC (~/src/iwai_project) which is the compute /
+  hardware-optimizer idea. See HOW_WE_GOT_HERE.txt in both places.
+
+DONE (MVP / v0.3)
+  - Parser, typechecker, formatter, JSON diagnostics
+  - Interpreter: full language (examples 01–14)
+  - Default native build: embed source + liblhs_rt
+  - Cranelift JIT + AOT: numbers, f64, strings, Option/Result,
+    custom ADTs (<=2 fields), structs + methods, match, stdlib,
+    read_file/write_file, sync task/await
+  - Day planner sample (CLI): apps/day_planner.lhs
+  - CI workflow, dual license, docs
+
+STILL OPEN (north star, not blocking "finish MVP")
+  - Shared GC / arenas (MEMORY.md) instead of only bump + Rust heap
+  - Parallel structured tasks (today: sync demo)
+  - Cranelift linking of real extern "C" (example 09 still uses interpreter/embed)
+  - Hot reload / richer agent loop tooling
+
+HOW TO CHECK
+  cd ~/src/newproj
+  cargo test --workspace
+  cargo run -p npc --bin lhsc -- test examples
+  cargo run -p npc --bin lhsc -- run --jit examples/06_struct_method.lhs
+  cargo run -p npc --bin lhsc -- run --jit examples/11_file_io.lhs
+
+NEXT PRODUCT CHOICE (when ready)
+  A) Keep polishing LHS (GC, parallel, extern AOT)
+  B) Return to IWAI/UCC from ~/src/iwai_project notes

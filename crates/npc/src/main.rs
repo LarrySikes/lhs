@@ -3,6 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
 
+use lhs_jit::{build_aot, is_jit_supported, run_jit};
 use np_codegen::{build_native, compile_c_to_binary, emit_c};
 use np_eval::run_program_stdout;
 use np_hir::{check, Diagnostic};
@@ -16,22 +17,29 @@ struct JsonDiag<'a> {
     code: &'a str,
     message: &'a str,
     help: Option<&'a str>,
+    warning: bool,
 }
 
 fn usage() -> ! {
     eprintln!(
-        "lhsc — LHS compiler v0.1\n\n\
+        "lhsc — LHS compiler v0.2\n\n\
          Usage:\n\
            lhsc check [--json] <file.lhs>\n\
-           lhsc run <file.lhs>\n\
+           lhsc run [--jit] <file.lhs>\n\
            lhsc fmt [--write] <file.lhs>\n\
            lhsc test [examples_dir]\n\
-           lhsc build <file.lhs> [-o outfile] [--emit=c]\n\
+           lhsc build <file.lhs> [-o outfile] [--emit=c|cranelift]\n\
              default: native binary (embeds source, links liblhs_rt)\n\
-             --emit=c: subset AOT via C translator\n\n\
+             --emit=c: subset AOT via C translator\n\
+             --emit=cranelift: subset AOT via Cranelift (true native)\n\
+             run --jit: Cranelift JIT for the same subset\n\n\
          Language: LHS. Compiler implemented in Rust.\n"
     );
     process::exit(2);
+}
+
+fn has_errors(diags: &[Diagnostic]) -> bool {
+    diags.iter().any(|d| d.is_error())
 }
 
 fn print_diag(d: &Diagnostic, json: bool) {
@@ -42,10 +50,15 @@ fn print_diag(d: &Diagnostic, json: bool) {
             code: &d.code,
             message: &d.message,
             help: d.help.as_deref(),
+            warning: d.warning,
         };
         println!("{}", serde_json::to_string(&j).unwrap());
     } else {
-        eprintln!("{}:{}-{}: {} {}", d.file, d.start, d.end, d.code, d.message);
+        let kind = if d.warning { "warning" } else { "error" };
+        eprintln!(
+            "{}:{}-{}: {} {} {}",
+            d.file, d.start, d.end, kind, d.code, d.message
+        );
         if let Some(h) = &d.help {
             eprintln!("  help: {h}");
         }
@@ -64,7 +77,7 @@ fn load_ok(path: &Path) -> Option<np_hir::Module> {
     for d in &diags {
         print_diag(d, false);
     }
-    if !diags.is_empty() {
+    if has_errors(&diags) {
         return None;
     }
     module
@@ -82,23 +95,47 @@ fn cmd_check(path: &Path, json: bool) -> i32 {
     for d in &diags {
         print_diag(d, json);
     }
-    if diags.is_empty() {
+    if has_errors(&diags) {
+        1
+    } else {
         if !json {
             if let Some(m) = module {
                 let n = m.program.items.len();
-                eprintln!("lhsc: ok ({n} item{})", if n == 1 { "" } else { "s" });
+                let w = diags.iter().filter(|d| d.warning).count();
+                if w > 0 {
+                    eprintln!(
+                        "lhsc: ok ({n} item{}, {w} warning{})",
+                        if n == 1 { "" } else { "s" },
+                        if w == 1 { "" } else { "s" }
+                    );
+                } else {
+                    eprintln!("lhsc: ok ({n} item{})", if n == 1 { "" } else { "s" });
+                }
             }
         }
         0
-    } else {
-        1
     }
 }
 
-fn cmd_run(path: &Path) -> i32 {
+fn cmd_run(path: &Path, use_jit: bool) -> i32 {
     let Some(module) = load_ok(path) else {
         return 1;
     };
+    if use_jit {
+        if !is_jit_supported(&module.program) {
+            eprintln!(
+                "lhsc: --jit: outside subset (`extern` / unsafe FFI need plain `lhsc run` or embed build)."
+            );
+            return 1;
+        }
+        return match run_jit(&module.program) {
+            Ok(()) => 0,
+            Err(e) => {
+                eprintln!("lhsc: jit error: {}", e.message);
+                1
+            }
+        };
+    }
     match run_program_stdout(&module.program) {
         Ok(_) => 0,
         Err(e) => {
@@ -123,6 +160,17 @@ fn cmd_fmt(path: &Path, write: bool) -> i32 {
         }
         return 1;
     };
+    if has_errors(&diags) {
+        for d in &diags {
+            print_diag(d, false);
+        }
+        return 1;
+    }
+    for d in &diags {
+        if d.warning {
+            print_diag(d, false);
+        }
+    }
     let formatted = format_program(&module.program);
     if write {
         if let Err(e) = fs::write(path, formatted) {
@@ -161,7 +209,7 @@ fn cmd_test(dir: &Path) -> i32 {
         let expect_fail = name.contains("bad_type") || name.starts_with("10_");
         let text = fs::read_to_string(path).unwrap_or_default();
         let (module, diags) = check(&path.display().to_string(), text);
-        let check_ok = diags.is_empty() && module.is_some();
+        let check_ok = !has_errors(&diags) && module.is_some();
         if expect_fail {
             if !check_ok {
                 println!("ok   {name} (expected type/check failure)");
@@ -200,7 +248,7 @@ fn cmd_test(dir: &Path) -> i32 {
     }
 }
 
-fn cmd_build(path: &Path, out: &Path, emit_c_subset: bool) -> i32 {
+fn cmd_build(path: &Path, out: &Path, emit: EmitMode) -> i32 {
     let text = match fs::read_to_string(path) {
         Ok(t) => t,
         Err(e) => {
@@ -212,13 +260,13 @@ fn cmd_build(path: &Path, out: &Path, emit_c_subset: bool) -> i32 {
     for d in &diags {
         print_diag(d, false);
     }
-    if !diags.is_empty() || module.is_none() {
+    if has_errors(&diags) || module.is_none() {
         return 1;
     }
     let module = module.unwrap();
 
-    if emit_c_subset {
-        match emit_c(&module.program) {
+    match emit {
+        EmitMode::C => match emit_c(&module.program) {
             Ok(c) => match compile_c_to_binary(&c, &out.display().to_string()) {
                 Ok(()) => {
                     eprintln!("lhsc: built {} (--emit=c subset)", out.display());
@@ -233,9 +281,26 @@ fn cmd_build(path: &Path, out: &Path, emit_c_subset: bool) -> i32 {
                 eprintln!("lhsc: --emit=c: {}", e.message);
                 1
             }
+        },
+        EmitMode::Cranelift => {
+            if !is_jit_supported(&module.program) {
+                eprintln!(
+                    "lhsc: --emit=cranelift: outside subset; use default `lhsc build` for full language"
+                );
+                return 1;
+            }
+            match build_aot(&module.program, &out.display().to_string()) {
+                Ok(()) => {
+                    eprintln!("lhsc: built {} (--emit=cranelift)", out.display());
+                    0
+                }
+                Err(e) => {
+                    eprintln!("lhsc: cranelift build failed: {}", e.message);
+                    1
+                }
+            }
         }
-    } else {
-        match build_native(&text, &out.display().to_string()) {
+        EmitMode::Embed => match build_native(&text, &out.display().to_string()) {
             Ok(()) => {
                 eprintln!("lhsc: built {}", out.display());
                 0
@@ -244,8 +309,15 @@ fn cmd_build(path: &Path, out: &Path, emit_c_subset: bool) -> i32 {
                 eprintln!("lhsc: build failed: {}", e.message);
                 1
             }
-        }
+        },
     }
+}
+
+#[derive(Clone, Copy)]
+enum EmitMode {
+    Embed,
+    C,
+    Cranelift,
 }
 
 fn main() {
@@ -272,10 +344,20 @@ fn main() {
             process::exit(cmd_check(Path::new(&file), json));
         }
         "run" => {
-            let Some(file) = args.into_iter().next() else {
-                usage();
-            };
-            process::exit(cmd_run(Path::new(&file)));
+            let mut use_jit = false;
+            let mut file: Option<String> = None;
+            for a in args {
+                if a == "--jit" {
+                    use_jit = true;
+                } else if a.starts_with('-') {
+                    eprintln!("lhsc: unknown flag {a}");
+                    usage();
+                } else {
+                    file = Some(a);
+                }
+            }
+            let Some(file) = file else { usage() };
+            process::exit(cmd_run(Path::new(&file), use_jit));
         }
         "fmt" => {
             let mut write = false;
@@ -302,13 +384,15 @@ fn main() {
         "build" => {
             let mut out: Option<String> = None;
             let mut file: Option<String> = None;
-            let mut emit_c_subset = false;
+            let mut emit = EmitMode::Embed;
             let mut it = args.into_iter();
             while let Some(a) = it.next() {
                 if a == "-o" {
                     out = it.next();
                 } else if a == "--emit=c" {
-                    emit_c_subset = true;
+                    emit = EmitMode::C;
+                } else if a == "--emit=cranelift" {
+                    emit = EmitMode::Cranelift;
                 } else if a.starts_with('-') {
                     usage();
                 } else {
@@ -323,7 +407,7 @@ fn main() {
                     .to_string_lossy()
                     .into_owned()
             });
-            process::exit(cmd_build(Path::new(&file), Path::new(&out), emit_c_subset));
+            process::exit(cmd_build(Path::new(&file), Path::new(&out), emit));
         }
         "-h" | "--help" | "help" => usage(),
         other => {

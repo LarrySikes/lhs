@@ -1,0 +1,94 @@
+HOW WE GOT FROM IWAI TO LHS
+Saved: 2026-09-21  (so you do not have to remember this from chat)
+
+--------------------------------------------------------------------
+WHERE YOU STARTED  (~/src/iwai_project/)
+--------------------------------------------------------------------
+
+Two text files (Aug 22):
+
+  doc.txt       — Product vision: IWAI / “universal compute”
+  workplan.txt  — How to build it as a company + compiler platform
+
+The ORIGINAL idea was NOT “replace Python/Rust with a new app language.”
+
+It was:
+
+  A SMALL COMPUTE LANGUAGE (kernels / tensors / matmul / parallel)
+       +
+  Aggressive optimizer that picks CPU/GPU/NPU implementations
+       +
+  Profiler that explains bottlenecks
+       +
+  Autotuning + performance database (the moat)
+       +
+  Sell PERFORMANCE PORTABILITY to enterprises / hardware vendors
+       (not “cool syntax”)
+
+Workplan name for that: UCC (Universal Compute Compiler).
+
+Key decisions in those notes:
+  - Do NOT rebuild all of LLVM — sit above MLIR/LLVM
+  - Accept Python/C++/etc.; language is the interface, product is speed
+  - Year-1 niche: inference / numerical kernels, NVIDIA first
+  - Alternative path also mentioned: SQL/data compiler
+
+--------------------------------------------------------------------
+HOW WE DIVERTED TO LHS  (~/src/newproj/)
+--------------------------------------------------------------------
+
+Later (Sep 19–21 chats), while working on IWBasic day_planner /
+iwbc, you asked a “crazy question”:
+
+  Could we address the TWO-LANGUAGE PROBLEM —
+  Python ease + Rust/C safety/performance —
+  using iwbc as a PROCESS template (not BASIC syntax)?
+
+That is a DIFFERENT product from IWAI:
+
+  IWAI  =  compute kernels + heterogeneous optimization (narrow DSL)
+  LHS   =  general-purpose app language + toolchain (lhsc)
+
+We discussed BOTH. You then chose to explore the general-purpose
+path “from scratch” in ~/src/newproj, named it LHS, and we shipped
+an MVP (parser, checker, run/build, Cranelift subset, day_planner CLI).
+
+So: not a wrong turn — a fork in the conversation.
+The IWAI notes were never deleted; they are still the compute/UCC plan.
+
+--------------------------------------------------------------------
+SIDE-BY-SIDE
+--------------------------------------------------------------------
+
+  IWAI / UCC (iwai_project)          LHS (newproj)
+  ----------------------------      ----------------------------
+  Compute/kernel DSL                General app language
+  Tensors, matmul, fusion           Option/ADT, tasks, files, CLI apps
+  MLIR / LLVM / CUDA backends       Rust crates + Cranelift + embed RT
+  Sell speed across hardware        Sell one language for apps/agents
+  Year-1: inference kernels         Year-1: runnable language + day_planner
+
+--------------------------------------------------------------------
+IF YOU WANT TO CONTINUE IWAI NEXT
+--------------------------------------------------------------------
+
+Start from workplan.txt §18 (first year):
+
+  Months 1–3:  tiny DSL → IR → LLVM, CPU matmul/vector ops
+  Then:        one GPU (CUDA), fusion, autotune, Python front door
+
+LHS can stay as the “app language” experiment; IWAI is the
+“make compute fast on any box” business plan.
+
+--------------------------------------------------------------------
+PATHS ON DISK
+--------------------------------------------------------------------
+
+  IWAI notes:     /home/iwlnx/src/iwai_project/doc.txt
+                  /home/iwlnx/src/iwai_project/workplan.txt
+  This bridge:    /home/iwlnx/src/iwai_project/HOW_WE_GOT_HERE.txt
+  LHS project:    /home/iwlnx/src/newproj/
+  Day planner:    /home/iwlnx/src/newproj/apps/day_planner.lhs
+  Original IWB:   /home/iwlnx/src/new0423/iwb_project/work_in_progress/day_planner.iwb
+
+Ask anything about either track — IWAI or LHS — whenever you like.

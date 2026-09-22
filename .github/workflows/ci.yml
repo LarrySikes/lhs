@@ -1,0 +1,41 @@
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build
+        run: cargo build -p lhs_rt -p lhs_jit -p npc --bin lhsc
+      - name: Unit tests
+        run: cargo test --workspace
+      - name: Example suite
+        run: cargo run -p npc --bin lhsc -- test examples
+      - name: JIT smoke
+        run: |
+          cargo run -p npc --bin lhsc -- run --jit examples/01_hello.lhs
+          cargo run -p npc --bin lhsc -- run --jit examples/03_option_match.lhs
+          cargo run -p npc --bin lhsc -- run --jit examples/05_adt.lhs
+          cargo run -p npc --bin lhsc -- run --jit examples/06_struct_method.lhs
+          cargo run -p npc --bin lhsc -- run --jit examples/11_file_io.lhs
+          cargo run -p npc --bin lhsc -- run --jit examples/13_stdlib.lhs
+      - name: Cranelift AOT smoke
+        run: |
+          cargo run -p npc --bin lhsc -- build examples/05_adt.lhs -o /tmp/lhs_aot --emit=cranelift
+          /tmp/lhs_aot
+          cargo run -p npc --bin lhsc -- build examples/06_struct_method.lhs -o /tmp/lhs_aot06 --emit=cranelift
+          /tmp/lhs_aot06
+          cargo run -p npc --bin lhsc -- build examples/07_flow_narrow.lhs -o /tmp/lhs_aot07 --emit=cranelift
+          /tmp/lhs_aot07
+          cargo run -p npc --bin lhsc -- build examples/11_file_io.lhs -o /tmp/lhs_aot11 --emit=cranelift
+          /tmp/lhs_aot11
+      - name: Embed build smoke
+        run: |
+          cargo run -p npc --bin lhsc -- build examples/06_struct_method.lhs -o /tmp/lhs_06
+          /tmp/lhs_06

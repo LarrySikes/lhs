@@ -1,37 +1,30 @@
-# LHS — v0.2 (2026)
+# LHS — v0.2.1 (2026) · complete
 
 **LHS** is a small, memory-safe-oriented language with a Rust-hosted toolchain.
 
-**Compiler:** `lhsc` · **Sources:** `.lhs` · **Year:** 2026
+**Compiler:** `lhsc` · **Sources:** `.lhs` · **License:** MIT OR Apache-2.0
+
+One-page tour: [`docs/OVERVIEW.md`](docs/OVERVIEW.md)
 
 ## Commands
 
 ```bash
 cargo run -p npc --bin lhsc -- check examples/01_hello.lhs
 cargo run -p npc --bin lhsc -- run examples/01_hello.lhs
+cargo run -p npc --bin lhsc -- run --jit examples/05_adt.lhs
 cargo run -p npc --bin lhsc -- fmt examples/01_hello.lhs
 cargo run -p npc --bin lhsc -- test examples
-cargo run -p npc --bin lhsc -- build examples/03_option_match.lhs -o /tmp/lhs_03
-# optional subset AOT:
-cargo run -p npc --bin lhsc -- build examples/01_hello.lhs -o /tmp/h --emit=c
+cargo run -p npc --bin lhsc -- build examples/06_struct_method.lhs -o /tmp/lhs_06
+cargo run -p npc --bin lhsc -- build examples/05_adt.lhs -o /tmp/a --emit=cranelift
 ```
 
-## Compiler source
+## Status
 
-| Path | Role |
-|------|------|
-| `crates/npc` | CLI (`lhsc`) |
-| `crates/np_syntax` | Lexer, parser, AST, formatter |
-| `crates/np_hir` | Type checker |
-| `crates/np_eval` | Interpreter |
-| `crates/np_codegen` | Native packaging + subset C emitter |
-| `crates/lhs_rt` | `liblhs_rt.a` for `lhsc build` |
+- [x] Parse / typecheck / fmt / test / JSON diagnostics
+- [x] Full-language `run` + embed `build` (`liblhs_rt`)
+- [x] `--emit=c` subset · `--emit=cranelift` / `run --jit` (ADT/Option/Result/f64/strings)
+- [x] Match exhaustiveness warnings · bump arena (`docs/MEMORY.md`)
+- [x] CI + licenses
 
-## Status (v0.2)
-
-- [x] Parse / typecheck / fmt / test
-- [x] `lhsc run` full examples
-- [x] `lhsc build` native binaries for **all** language features (embed + `liblhs_rt`)
-- [x] `--emit=c` subset translator
-- [x] Stdlib: print, file I/O, abs/min/max/assert
-- [ ] Cranelift AOT (optional future)
+Cranelift still skips **receiver methods**, **extern**, and **file I/O** (use
+default `build` / `run`). See `docs/OVERVIEW.md`.

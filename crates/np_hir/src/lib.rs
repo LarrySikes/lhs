@@ -3,7 +3,8 @@
 use std::collections::HashMap;
 
 use np_syntax::{
-    BinOp, Block, Expr, FnItem, Item, Pat, Program, SourceFile, Stmt, TypeBody, TypeItem, TypeRef,
+    BinOp, Block, Expr, FnItem, Item, MatchArm, Pat, Program, SourceFile, Stmt, TypeBody, TypeItem,
+    TypeRef,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14,14 +15,23 @@ pub struct Diagnostic {
     pub code: String,
     pub message: String,
     pub help: Option<String>,
+    /// Soft diagnostic: printed, but does not fail `lhsc check` / `run`.
+    pub warning: bool,
+}
+
+impl Diagnostic {
+    pub fn is_error(&self) -> bool {
+        !self.warning
+    }
 }
 
 impl std::fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let kind = if self.warning { "warning" } else { "error" };
         write!(
             f,
-            "{}:{}-{}: {} {}",
-            self.file, self.start, self.end, self.code, self.message
+            "{}:{}-{}: {} {}: {}",
+            self.file, self.start, self.end, kind, self.code, self.message
         )
     }
 }
@@ -35,6 +45,7 @@ impl From<np_syntax::Diagnostic> for Diagnostic {
             code: d.code,
             message: d.message,
             help: d.help,
+            warning: false,
         }
     }
 }
@@ -124,6 +135,19 @@ impl<'a> Checker<'a> {
             code: code.into(),
             message: message.into(),
             help: help.map(|s| s.to_string()),
+            warning: false,
+        });
+    }
+
+    fn warn(&mut self, start: usize, end: usize, code: &str, message: impl Into<String>, help: Option<&str>) {
+        self.diags.push(Diagnostic {
+            file: self.file.to_string(),
+            start,
+            end,
+            code: code.into(),
+            message: message.into(),
+            help: help.map(|s| s.to_string()),
+            warning: true,
         });
     }
 
@@ -269,6 +293,18 @@ impl<'a> Checker<'a> {
             .insert("max".into(), (vec![Ty::Unknown, Ty::Unknown], Ty::Unknown));
         self.fns
             .insert("assert".into(), (vec![Ty::Bool], Ty::Unit));
+        self.fns.insert(
+            "read_line".into(),
+            (vec![], Ty::Option(Box::new(Ty::Str))),
+        );
+        self.fns.insert(
+            "str_slice".into(),
+            (vec![Ty::Str, Ty::I32, Ty::I32], Ty::Str),
+        );
+        self.fns.insert(
+            "find_char".into(),
+            (vec![Ty::Str, Ty::Char, Ty::I32], Ty::I32),
+        );
     }
 
     fn check_program(&mut self, program: &Program) {
@@ -405,6 +441,20 @@ impl<'a> Checker<'a> {
                     }
                     return Ty::Option(Box::new(Ty::Unknown));
                 }
+                // nullary ADT constructor (e.g. Nil)
+                if name.chars().next().is_some_and(|c| c.is_uppercase()) {
+                    let type_names: Vec<String> = self.types.keys().cloned().collect();
+                    for tname in type_names {
+                        if let Some(ti) = self.types.get(&tname) {
+                            if let TypeBody::Adt(variants) = &ti.kind {
+                                if variants.iter().any(|v| v.name == *name && v.fields.is_empty())
+                                {
+                                    return Ty::Named(tname);
+                                }
+                            }
+                        }
+                    }
+                }
                 self.diag(
                     span.start,
                     span.end,
@@ -467,7 +517,9 @@ impl<'a> Checker<'a> {
                 }
             }
             Expr::Match {
-                scrutinee, arms, ..
+                scrutinee,
+                arms,
+                span,
             } => {
                 let st = self.check_expr(env, scrutinee, None);
                 let mut result = Ty::Unknown;
@@ -479,6 +531,7 @@ impl<'a> Checker<'a> {
                         result = at;
                     }
                 }
+                self.check_match_exhaustive(span.start, span.end, &st, arms);
                 result
             }
             Expr::StructLit { name, fields, span } => {
@@ -621,9 +674,10 @@ impl<'a> Checker<'a> {
                 Ty::Char
             }
             Expr::Call { callee, args, span } => self.check_call(env, callee, args, span.start, span.end, hint),
-            Expr::Task { body, .. } => self.check_block(env, body, None),
+            Expr::Block { body, .. } | Expr::Task { body, .. } | Expr::Unsafe { body, .. } => {
+                self.check_block(env, body, hint)
+            }
             Expr::Await { inner, .. } => self.check_expr(env, inner, hint),
-            Expr::Unsafe { body, .. } => self.check_block(env, body, None),
         }
     }
 
@@ -685,7 +739,8 @@ impl<'a> Checker<'a> {
                 return Ty::Unit;
             }
             if name == "read_file" || name == "write_file" || name == "abs" || name == "min"
-                || name == "max" || name == "assert"
+                || name == "max" || name == "assert" || name == "read_line"
+                || name == "str_slice" || name == "find_char"
             {
                 if let Some((params, ret)) = self.fns.get(name).cloned() {
                     for (i, a) in args.iter().enumerate() {
@@ -783,7 +838,9 @@ impl<'a> Checker<'a> {
         use BinOp::*;
         match op {
             Add | Sub | Mul | Div => {
-                if lt.same(&Ty::F64) || rt.same(&Ty::F64) {
+                if matches!(op, Add) && (lt.same(&Ty::Str) || rt.same(&Ty::Str)) {
+                    Ty::Str
+                } else if lt.same(&Ty::F64) || rt.same(&Ty::F64) {
                     Ty::F64
                 } else if lt.same(&Ty::I32) && rt.same(&Ty::I32) {
                     Ty::I32
@@ -814,6 +871,70 @@ impl<'a> Checker<'a> {
                 }
                 Ty::Bool
             }
+        }
+    }
+
+    fn check_match_exhaustive(
+        &mut self,
+        start: usize,
+        end: usize,
+        scrut: &Ty,
+        arms: &[MatchArm],
+    ) {
+        let Some(expected) = self.expected_ctors(scrut) else {
+            return;
+        };
+        if expected.is_empty() {
+            return;
+        }
+        let mut covered = std::collections::HashSet::new();
+        let mut has_wildcard = false;
+        for arm in arms {
+            match top_ctor(&arm.pat) {
+                TopCtor::Wildcard => {
+                    has_wildcard = true;
+                }
+                TopCtor::Named(n) => {
+                    covered.insert(n);
+                }
+            }
+        }
+        if has_wildcard {
+            return;
+        }
+        let missing: Vec<&str> = expected
+            .iter()
+            .filter(|c| !covered.contains(*c))
+            .map(|s| s.as_str())
+            .collect();
+        if !missing.is_empty() {
+            self.warn(
+                start,
+                end,
+                "W0200",
+                format!(
+                    "non-exhaustive match: missing pattern(s) {}",
+                    missing.join(", ")
+                ),
+                Some("add the missing arms or a catch-all binding"),
+            );
+        }
+    }
+
+    fn expected_ctors(&self, scrut: &Ty) -> Option<Vec<String>> {
+        match scrut {
+            Ty::Option(_) => Some(vec!["Some".into(), "None".into()]),
+            Ty::Result(_, _) => Some(vec!["Ok".into(), "Err".into()]),
+            Ty::Named(tn) => {
+                let ti = self.types.get(tn)?;
+                match &ti.kind {
+                    TypeBody::Adt(variants) => {
+                        Some(variants.iter().map(|v| v.name.clone()).collect())
+                    }
+                    TypeBody::Struct(_) => None,
+                }
+            }
+            _ => None,
         }
     }
 
@@ -874,6 +995,24 @@ impl<'a> Checker<'a> {
     }
 }
 
+enum TopCtor {
+    Wildcard,
+    Named(String),
+}
+
+fn top_ctor(pat: &Pat) -> TopCtor {
+    match pat {
+        Pat::Ident { name, .. } => {
+            if name == "None" || name.chars().next().is_some_and(|c| c.is_uppercase()) {
+                TopCtor::Named(name.clone())
+            } else {
+                TopCtor::Wildcard
+            }
+        }
+        Pat::Call { name, .. } | Pat::Struct { name, .. } => TopCtor::Named(name.clone()),
+    }
+}
+
 pub fn check(path: &str, text: String) -> (Option<Module>, Vec<Diagnostic>) {
     match np_syntax::parse_file(path, text) {
         Ok((file, program)) => {
@@ -886,11 +1025,45 @@ pub fn check(path: &str, text: String) -> (Option<Module>, Vec<Diagnostic>) {
             checker.collect(&program);
             checker.check_program(&program);
             let diags = checker.diags;
-            if diags.iter().any(|d| d.code.starts_with('E')) {
-                // still return module for tooling that wants AST
-            }
             (Some(Module { file, program }), diags)
         }
         Err(e) => (None, vec![Diagnostic::from(e)]),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn warns_on_partial_option_match() {
+        let src = r#"
+fn main() {
+    match Some(1) {
+        Some(n) => print(n),
+    }
+}
+"#;
+        let (_, diags) = check("t.lhs", src.into());
+        assert!(
+            diags.iter().any(|d| d.warning && d.code == "W0200"),
+            "expected W0200, got {:?}",
+            diags
+        );
+        assert!(!diags.iter().any(|d| d.is_error()));
+    }
+
+    #[test]
+    fn no_warn_when_exhaustive() {
+        let src = r#"
+fn main() {
+    match Some(1) {
+        Some(n) => print(n),
+        None => print(0),
+    }
+}
+"#;
+        let (_, diags) = check("t.lhs", src.into());
+        assert!(!diags.iter().any(|d| d.code == "W0200"), "{:?}", diags);
     }
 }

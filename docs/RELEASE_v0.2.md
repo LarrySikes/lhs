@@ -1,26 +1,20 @@
-# RELEASE — LHS v0.2.0 (2026)
+# RELEASE — LHS v0.2.1 (2026) · complete
 
 ## Highlights
 
-- **`lhsc build`** produces a native binary for the **full** language by
-  embedding source and linking `liblhs_rt` (interpreter runtime).
-- **`--emit=c`** keeps the subset C translator for simple programs.
-- Stdlib helpers: `abs`, `min`, `max`, `assert` (+ existing print / file I/O).
-- Example suite: 13 programs; `lhsc test examples` all green.
+- Full-language **embed** native binaries (`liblhs_rt`)
+- **Cranelift** JIT + `--emit=cranelift` AOT: Option/Result, **custom ADTs**,
+  `f64`, strings, match/`is`/`unwrap`, stdlib, sync tasks
+- Match exhaustiveness warnings · bump arena · CI · licenses
+- Still embed/interpret for: receiver methods, extern, file I/O
 
-## Verify (2026)
+## Verify
 
 ```bash
-cargo build -p lhs_rt -p npc --bin lhsc
+cargo test --workspace
 cargo run -p npc --bin lhsc -- test examples
-cargo run -p npc --bin lhsc -- build examples/06_struct_method.lhs -o /tmp/lhs_06
-/tmp/lhs_06   # prints 5
+cargo run -p npc --bin lhsc -- run --jit examples/05_adt.lhs
+cargo run -p npc --bin lhsc -- build examples/05_adt.lhs -o /tmp/a --emit=cranelift && /tmp/a
 ```
 
-## Layout
-
-- Language name: **LHS**
-- Extension: **`.lhs`**
-- CLI: **`lhsc`**
-- C backend / packaging: `crates/np_codegen`
-- Runtime staticlib: `crates/lhs_rt`
+See `docs/OVERVIEW.md`.

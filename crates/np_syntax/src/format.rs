@@ -95,16 +95,20 @@ fn format_type(out: &mut String, t: &TypeItem) {
             for v in variants {
                 out.push_str("    ");
                 out.push_str(&v.name);
-                out.push_str(" { ");
-                for (i, f) in v.fields.iter().enumerate() {
-                    if i > 0 {
-                        out.push_str(", ");
+                if v.fields.is_empty() {
+                    out.push_str(",\n");
+                } else {
+                    out.push_str(" { ");
+                    for (i, f) in v.fields.iter().enumerate() {
+                        if i > 0 {
+                            out.push_str(", ");
+                        }
+                        out.push_str(&f.name);
+                        out.push_str(": ");
+                        format_type_ref(out, &f.ty);
                     }
-                    out.push_str(&f.name);
-                    out.push_str(": ");
-                    format_type_ref(out, &f.ty);
+                    out.push_str(" },\n");
                 }
-                out.push_str(" },\n");
             }
         }
     }
@@ -291,6 +295,9 @@ fn format_expr(out: &mut String, e: &Expr, indent: usize) {
             out.push('(');
             format_expr(out, inner, indent);
             out.push(')');
+        }
+        Expr::Block { body, .. } => {
+            format_block(out, body, indent);
         }
     }
 }

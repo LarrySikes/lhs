@@ -153,9 +153,9 @@ impl<'a, W: Write> Interpreter<'a, W> {
                 if let Some(v) = env.get(name) {
                     return Ok(v.clone());
                 }
-                if name == "None" {
+                if name == "None" || name.chars().next().is_some_and(|c| c.is_uppercase()) {
                     return Ok(Value::Variant {
-                        name: "None".into(),
+                        name: name.clone(),
                         fields: HashMap::new(),
                         positional: Vec::new(),
                     });
@@ -241,7 +241,9 @@ impl<'a, W: Write> Interpreter<'a, W> {
                 }
             }
             Expr::Call { callee, args, .. } => self.eval_call(env, callee, args),
-            Expr::Task { body, .. } | Expr::Unsafe { body, .. } => self.eval_block(env, body),
+            Expr::Block { body, .. } | Expr::Task { body, .. } | Expr::Unsafe { body, .. } => {
+                self.eval_block(env, body)
+            }
             Expr::Await { inner, .. } => self.eval_expr(env, inner),
         }
     }
@@ -409,6 +411,70 @@ impl<'a, W: Write> Interpreter<'a, W> {
                     _ => return Err(err("assert expects bool")),
                 }
             }
+            if name == "read_line" {
+                let mut line = String::new();
+                match io::stdin().read_line(&mut line) {
+                    Ok(0) => {
+                        return Ok(Value::Variant {
+                            name: "None".into(),
+                            fields: HashMap::new(),
+                            positional: vec![],
+                        })
+                    }
+                    Ok(_) => {
+                        while line.ends_with('\n') || line.ends_with('\r') {
+                            line.pop();
+                        }
+                        return Ok(Value::Variant {
+                            name: "Some".into(),
+                            fields: HashMap::new(),
+                            positional: vec![Value::Str(line)],
+                        });
+                    }
+                    Err(e) => return Err(err(format!("read_line: {e}"))),
+                }
+            }
+            if name == "str_slice" {
+                let s = match arg_vals.first() {
+                    Some(Value::Str(s)) => s.clone(),
+                    _ => return Err(err("str_slice expects str")),
+                };
+                let start = match arg_vals.get(1) {
+                    Some(Value::Int(n)) => *n,
+                    _ => return Err(err("str_slice start expects i32")),
+                };
+                let end = match arg_vals.get(2) {
+                    Some(Value::Int(n)) => *n,
+                    _ => return Err(err("str_slice end expects i32")),
+                };
+                let chars: Vec<char> = s.chars().collect();
+                let n = chars.len() as i64;
+                let a = start.clamp(0, n) as usize;
+                let b = end.clamp(0, n) as usize;
+                let b = b.max(a);
+                return Ok(Value::Str(chars[a..b].iter().collect()));
+            }
+            if name == "find_char" {
+                let s = match arg_vals.first() {
+                    Some(Value::Str(s)) => s.clone(),
+                    _ => return Err(err("find_char expects str")),
+                };
+                let ch = match arg_vals.get(1) {
+                    Some(Value::Char(c)) => *c,
+                    _ => return Err(err("find_char expects char")),
+                };
+                let from = match arg_vals.get(2) {
+                    Some(Value::Int(n)) => *n,
+                    None => 0,
+                    _ => return Err(err("find_char from expects i32")),
+                };
+                for (i, c) in s.chars().enumerate() {
+                    if (i as i64) >= from && c == ch {
+                        return Ok(Value::Int(i as i64));
+                    }
+                }
+                return Ok(Value::Int(-1));
+            }
             if matches!(name.as_str(), "Some" | "Ok" | "Err") {
                 return Ok(Value::Variant {
                     name: name.clone(),
@@ -446,6 +512,9 @@ fn eval_binary(op: BinOp, l: &Value, r: &Value) -> Result<Value> {
     use BinOp::*;
     match (op, l, r) {
         (Add, Value::Int(a), Value::Int(b)) => Ok(Value::Int(a + b)),
+        (Add, Value::Str(a), Value::Str(b)) => Ok(Value::Str(format!("{a}{b}"))),
+        (Add, Value::Str(a), Value::Int(b)) => Ok(Value::Str(format!("{a}{b}"))),
+        (Add, Value::Int(a), Value::Str(b)) => Ok(Value::Str(format!("{a}{b}"))),
         (Sub, Value::Int(a), Value::Int(b)) => Ok(Value::Int(a - b)),
         (Mul, Value::Int(a), Value::Int(b)) => Ok(Value::Int(a * b)),
         (Div, Value::Int(a), Value::Int(b)) => Ok(Value::Int(a / b)),

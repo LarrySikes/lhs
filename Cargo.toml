@@ -7,9 +7,10 @@ members = [
     "crates/np_eval",
     "crates/np_codegen",
     "crates/lhs_rt",
+    "crates/lhs_jit",
 ]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"

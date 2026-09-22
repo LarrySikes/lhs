@@ -597,6 +597,11 @@ pub enum Expr {
         inner: Box<Expr>,
         span: Span,
     },
+    /// Block expression `{ stmts... }` (value = last stmt)
+    Block {
+        body: Block,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -850,10 +855,12 @@ impl Parser {
         self.expect_punct(TokenKind::LBrace)?;
         // Peek first member: `Name {` => ADT variant, `name:` => struct field
         let kind = if matches!(self.peek_kind(), TokenKind::Ident(_)) {
-            // Lookahead: Ident then `{` => variant; Ident then `:` => field
+            // Lookahead: Ident `{` / `,` / `}` => ADT variant; Ident `:` => struct field
             let save = self.idx;
             let _ = self.bump();
-            let is_variant = self.at(&TokenKind::LBrace);
+            let is_variant = self.at(&TokenKind::LBrace)
+                || self.at(&TokenKind::Comma)
+                || self.at(&TokenKind::RBrace);
             self.idx = save;
             if is_variant {
                 let mut variants = Vec::new();
@@ -892,6 +899,14 @@ impl Parser {
             TokenKind::Ident(n) => (n, name_tok.span.start),
             _ => return Err(self.diag(name_tok.span, "E0018", "expected variant name")),
         };
+        if !self.at(&TokenKind::LBrace) {
+            // nullary variant: `Nil`
+            return Ok(Variant {
+                name,
+                fields: Vec::new(),
+                span: Span::new(start, name_tok.span.end),
+            });
+        }
         self.expect_punct(TokenKind::LBrace)?;
         let mut fields = Vec::new();
         while !self.at(&TokenKind::RBrace) && !self.at(&TokenKind::Eof) {
@@ -1366,6 +1381,13 @@ impl Parser {
                     span: Span::new(start, end),
                 })
             }
+            TokenKind::LBrace => {
+                let body = self.parse_block()?;
+                Ok(Expr::Block {
+                    span: body.span,
+                    body,
+                })
+            }
             other => {
                 let t = self.bump();
                 Err(self.diag(
@@ -1554,7 +1576,7 @@ fn expr_span(e: &Expr) -> Span {
         | Expr::Task { span, .. }
         | Expr::Await { span, .. }
         | Expr::Unsafe { span, .. }
-        | Expr::Group { span, .. } => *span,
+        | Expr::Group { span, .. } | Expr::Block { span, .. } => *span,
     }
 }
 
