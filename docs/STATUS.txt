@@ -1,35 +1,32 @@
-LHS STATUS — v0.4 (2026-09-21)
+LHS STATUS — v0.5 (2026-09-21)
 ================================
 
 WHAT THIS IS
   LHS = general-purpose language (ease + native code + safety story).
   CLI = lhsc. Sources = *.lhs. Repo = ~/src/newproj.
-
   Separate from IWAI/UCC (~/src/iwai_project). See HOW_WE_GOT_HERE.txt.
 
-DONE (north-star / v0.4)
-  - Parser, typechecker, formatter, JSON diagnostics
-  - Interpreter: full language + parallel task/await (OS threads)
-  - Default native build: embed source + liblhs_rt
-  - Shared bump arena: crates/lhs_mem (JIT host + lhs_rt reset)
-  - Cranelift JIT + AOT: ADTs, structs/methods, file I/O, extern "C",
-    parallel tasks, stdlib
-  - lhsc watch — re-run on file change (hot reload)
-  - Day planner sample; examples 01–15
-  - CI workflow, dual license, docs
+DONE
+  - Full toolchain: check / run / watch / fmt / test / build
+  - Interpreter + embed natives + Cranelift JIT/AOT
+  - Parallel task/await, extern "C", structs/methods, file I/O
+  - Shared lhs_mem with reference-counted cells/strings + lhs_gc
+  - Extended stdlib: getenv, argc/arg, exit, sleep_ms, now_ms, eprint, gc
+  - Package layout reserved (stdlib/, docs/PACKAGES.md)
+  - Examples 01–16, day planner, CI, licenses
 
-HONEST LIMITS (not blockers for "complete")
-  - No full mark-sweep GC yet (bump + Rust Value heap; reset per run)
-  - No package ecosystem / large stdlib
-  - Not production-hardened (see manifesto non-goals)
-
-HOW TO CHECK
+VERIFY
   cd ~/src/newproj
   cargo test --workspace
   cargo run -p npc --bin lhsc -- test examples
-  cargo run -p npc --bin lhsc -- run --jit examples/09_c_abi.lhs
-  cargo run -p npc --bin lhsc -- watch examples/01_hello.lhs
+  cargo run -p npc --bin lhsc -- run --jit examples/16_stdlib_ext.lhs
 
-NEXT (optional product choice)
-  A) Harden LHS for real users (GC, packages, more libc bindings)
-  B) Return to IWAI/UCC from ~/src/iwai_project notes
+OPTIONAL LATER (product polish, not open checklist)
+  - Package imports (`use`) + registry
+  - Mark-sweep compaction / longer-lived heaps across runs
+  - Broader libc bindings
+  - Real-world production hardening
+
+NEXT PRODUCT FORK
+  A) Keep polishing LHS
+  B) Return to IWAI/UCC

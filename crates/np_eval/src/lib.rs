@@ -423,6 +423,81 @@ impl<'a, W: Write> Interpreter<'a, W> {
                     }
                 }
             }
+            if name == "getenv" {
+                let key = match arg_vals.first() {
+                    Some(Value::Str(s)) => s.clone(),
+                    _ => return Err(err("getenv expects str")),
+                };
+                return Ok(match std::env::var(&key) {
+                    Ok(s) => Value::Variant {
+                        name: "Some".into(),
+                        fields: HashMap::new(),
+                        positional: vec![Value::Str(s)],
+                    },
+                    Err(_) => Value::Variant {
+                        name: "None".into(),
+                        fields: HashMap::new(),
+                        positional: Vec::new(),
+                    },
+                });
+            }
+            if name == "argc" {
+                return Ok(Value::Int(std::env::args().len() as i64));
+            }
+            if name == "arg" {
+                let i = match arg_vals.first() {
+                    Some(Value::Int(n)) => *n,
+                    _ => return Err(err("arg expects int index")),
+                };
+                return Ok(match std::env::args().nth(i as usize) {
+                    Some(s) => Value::Variant {
+                        name: "Some".into(),
+                        fields: HashMap::new(),
+                        positional: vec![Value::Str(s)],
+                    },
+                    None => Value::Variant {
+                        name: "None".into(),
+                        fields: HashMap::new(),
+                        positional: Vec::new(),
+                    },
+                });
+            }
+            if name == "exit" {
+                let code = match arg_vals.first() {
+                    Some(Value::Int(n)) => *n as i32,
+                    _ => 0,
+                };
+                std::process::exit(code);
+            }
+            if name == "sleep_ms" {
+                let ms = match arg_vals.first() {
+                    Some(Value::Int(n)) => *n,
+                    _ => return Err(err("sleep_ms expects int")),
+                };
+                if ms > 0 {
+                    thread::sleep(std::time::Duration::from_millis(ms as u64));
+                }
+                return Ok(Value::Unit);
+            }
+            if name == "now_ms" {
+                use std::time::{SystemTime, UNIX_EPOCH};
+                let ms = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|d| d.as_millis() as i64)
+                    .unwrap_or(0);
+                return Ok(Value::Int(ms));
+            }
+            if name == "eprint" {
+                for v in &arg_vals {
+                    eprint!("{v}");
+                }
+                eprintln!();
+                return Ok(Value::Unit);
+            }
+            if name == "gc" {
+                let n = unsafe { lhs_mem::lhs_gc() };
+                return Ok(Value::Int(n as i64));
+            }
             if name == "abs" {
                 return match arg_vals.first() {
                     Some(Value::Int(n)) => Ok(Value::Int(n.abs())),

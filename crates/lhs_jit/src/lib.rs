@@ -32,6 +32,14 @@ const BUILTINS: &[&str] = &[
     "Err",
     "read_file",
     "write_file",
+    "getenv",
+    "argc",
+    "arg",
+    "exit",
+    "sleep_ms",
+    "now_ms",
+    "eprint",
+    "gc",
 ];
 const BUILTIN_METHODS: &[&str] = &["len", "unwrap", "sqrt"];
 
@@ -65,7 +73,12 @@ fn heap_reset() {
 }
 
 unsafe fn heap_alloc(n: usize) -> *mut u8 {
-    unsafe { lhs_mem::alloc(n) }
+    // Cells and dynamic strings are RC-backed so they can outlive a bump epoch.
+    unsafe { lhs_mem::rc_alloc(n) }
+}
+
+unsafe fn heap_cstr(s: &str) -> i64 {
+    unsafe { lhs_mem::rc_cstr(s) }
 }
 
 /* ---- parallel task registry ---- */
@@ -202,16 +215,6 @@ unsafe extern "C" fn host_fsqrt(a: i64) -> i64 {
     f64::from_bits(a as u64).sqrt().to_bits() as i64
 }
 
-unsafe fn heap_cstr(s: &str) -> i64 {
-    let bytes = s.as_bytes();
-    let p = unsafe { heap_alloc(bytes.len() + 1) };
-    unsafe {
-        std::ptr::copy_nonoverlapping(bytes.as_ptr(), p, bytes.len());
-        *p.add(bytes.len()) = 0;
-    }
-    p as i64
-}
-
 unsafe extern "C" fn host_read_file(path: i64) -> i64 {
     if path == 0 {
         return unsafe { host_make_err(heap_cstr("null path")) };
@@ -248,6 +251,63 @@ unsafe extern "C" fn host_write_file(path: i64, contents: i64) -> i64 {
         Ok(()) => unsafe { host_make_ok(0) },
         Err(e) => unsafe { host_make_err(heap_cstr(&e.to_string())) },
     }
+}
+
+unsafe extern "C" fn host_getenv(key: i64) -> i64 {
+    if key == 0 {
+        return unsafe { host_make_none() };
+    }
+    let ckey = unsafe { CStr::from_ptr(key as *const i8) };
+    let Ok(k) = ckey.to_str() else {
+        return unsafe { host_make_none() };
+    };
+    match std::env::var(k) {
+        Ok(v) => unsafe { host_make_some(heap_cstr(&v)) },
+        Err(_) => unsafe { host_make_none() },
+    }
+}
+
+unsafe extern "C" fn host_argc() -> i64 {
+    std::env::args().len() as i64
+}
+
+unsafe extern "C" fn host_arg(i: i64) -> i64 {
+    match std::env::args().nth(i as usize) {
+        Some(s) => unsafe { host_make_some(heap_cstr(&s)) },
+        None => unsafe { host_make_none() },
+    }
+}
+
+unsafe extern "C" fn host_exit(code: i64) -> i64 {
+    std::process::exit(code as i32);
+}
+
+unsafe extern "C" fn host_sleep_ms(ms: i64) -> i64 {
+    if ms > 0 {
+        thread::sleep(std::time::Duration::from_millis(ms as u64));
+    }
+    0
+}
+
+unsafe extern "C" fn host_now_ms() -> i64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+unsafe extern "C" fn host_eprint(p: i64) -> i64 {
+    if p != 0 {
+        let s = unsafe { CStr::from_ptr(p as *const i8) };
+        eprint!("{}", s.to_string_lossy());
+    }
+    eprintln!();
+    0
+}
+
+unsafe extern "C" fn host_gc() -> i64 {
+    unsafe { lhs_mem::lhs_gc() as i64 }
 }
 
 unsafe extern "C" fn host_str_len(p: i64) -> i64 {
@@ -473,6 +533,14 @@ struct HostFns {
     write_file: FuncId,
     spawn: FuncId,
     join: FuncId,
+    getenv: FuncId,
+    argc: FuncId,
+    arg: FuncId,
+    exit: FuncId,
+    sleep_ms: FuncId,
+    now_ms: FuncId,
+    eprint: FuncId,
+    gc: FuncId,
 }
 
 fn decl_i64_ret0<M: Module>(module: &mut M, name: &str) -> Result<FuncId, JitError> {
@@ -564,6 +632,32 @@ fn declare_hosts<M: Module>(module: &mut M) -> Result<HostFns, JitError> {
         write_file: decl_i64_ret2(module, "lhs_write_file")?,
         spawn: decl_i64_ret1(module, "lhs_spawn")?,
         join: decl_i64_ret1(module, "lhs_join")?,
+        getenv: decl_i64_ret1(module, "lhs_getenv")?,
+        argc: {
+            let mut sig = module.make_signature();
+            sig.returns.push(AbiParam::new(types::I64));
+            module
+                .declare_function("lhs_argc", Linkage::Import, &sig)
+                .map_err(|e| err(e.to_string()))?
+        },
+        arg: decl_i64_ret1(module, "lhs_arg")?,
+        exit: decl_i64_ret1(module, "lhs_exit")?,
+        sleep_ms: decl_i64_ret1(module, "lhs_sleep_ms")?,
+        now_ms: {
+            let mut sig = module.make_signature();
+            sig.returns.push(AbiParam::new(types::I64));
+            module
+                .declare_function("lhs_now_ms", Linkage::Import, &sig)
+                .map_err(|e| err(e.to_string()))?
+        },
+        eprint: decl_i64_ret1(module, "lhs_eprint")?,
+        gc: {
+            let mut sig = module.make_signature();
+            sig.returns.push(AbiParam::new(types::I64));
+            module
+                .declare_function("lhs_gc", Linkage::Import, &sig)
+                .map_err(|e| err(e.to_string()))?
+        },
     })
 }
 
@@ -982,6 +1076,14 @@ fn register_host_symbols(jit_builder: &mut JITBuilder) {
     jit_builder.symbol("lhs_write_file", host_write_file as *const u8);
     jit_builder.symbol("lhs_spawn", host_spawn as *const u8);
     jit_builder.symbol("lhs_join", host_join as *const u8);
+    jit_builder.symbol("lhs_getenv", host_getenv as *const u8);
+    jit_builder.symbol("lhs_argc", host_argc as *const u8);
+    jit_builder.symbol("lhs_arg", host_arg as *const u8);
+    jit_builder.symbol("lhs_exit", host_exit as *const u8);
+    jit_builder.symbol("lhs_sleep_ms", host_sleep_ms as *const u8);
+    jit_builder.symbol("lhs_now_ms", host_now_ms as *const u8);
+    jit_builder.symbol("lhs_eprint", host_eprint as *const u8);
+    jit_builder.symbol("lhs_gc", host_gc as *const u8);
     // libc
     jit_builder.symbol("puts", libc::puts as *const u8);
 }
@@ -1016,7 +1118,7 @@ pub fn run_jit(program: &Program) -> Result<(), JitError> {
     Ok(())
 }
 
-const STUBS_C: &str = r#"/* Generated by lhsc --emit=cranelift — bump arena + cells */
+const STUBS_C: &str = r#"/* Generated by lhsc --emit=cranelift — RC cells + hosts */
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1024,57 +1126,52 @@ const STUBS_C: &str = r#"/* Generated by lhsc --emit=cranelift — bump arena + 
 #include <math.h>
 #include <errno.h>
 #include <pthread.h>
+#include <time.h>
+#include <unistd.h>
 
 enum { TAG_NONE = 0, TAG_SOME = 1, TAG_OK = 2, TAG_ERR = 3 };
 
+typedef struct { int64_t rc; uint64_t size; } LhsRcHdr;
 typedef struct { int64_t tag; int64_t payload; int64_t extra; } LhsCell;
 
-static unsigned char lhs_heap[1 << 20];
-static size_t lhs_heap_off = 0;
-
-static void *lhs_alloc(size_t n) {
-    size_t align = 8;
-    size_t pad = (align - (lhs_heap_off % align)) % align;
-    lhs_heap_off += pad;
-    if (lhs_heap_off + n > sizeof(lhs_heap)) {
-        fprintf(stderr, "lhs: bump heap exhausted\n");
-        abort();
-    }
-    void *p = &lhs_heap[lhs_heap_off];
-    lhs_heap_off += n;
-    return p;
+static void *lhs_rc_alloc(size_t n) {
+    LhsRcHdr *h = (LhsRcHdr *)calloc(1, sizeof(LhsRcHdr) + n);
+    if (!h) abort();
+    h->rc = 1;
+    h->size = (uint64_t)n;
+    return (char *)h + sizeof(LhsRcHdr);
 }
 
 static int64_t lhs_heap_cstr(const char *s) {
     size_t n = s ? strlen(s) : 0;
-    char *p = (char *)lhs_alloc(n + 1);
+    char *p = (char *)lhs_rc_alloc(n + 1);
     if (s) memcpy(p, s, n);
     p[n] = 0;
     return (int64_t)(uintptr_t)p;
 }
 
 int64_t lhs_make_none(void) {
-    LhsCell *c = (LhsCell *)lhs_alloc(sizeof(LhsCell));
+    LhsCell *c = (LhsCell *)lhs_rc_alloc(sizeof(LhsCell));
     c->tag = TAG_NONE; c->payload = 0; c->extra = 0;
     return (int64_t)(uintptr_t)c;
 }
 int64_t lhs_make_some(int64_t v) {
-    LhsCell *c = (LhsCell *)lhs_alloc(sizeof(LhsCell));
+    LhsCell *c = (LhsCell *)lhs_rc_alloc(sizeof(LhsCell));
     c->tag = TAG_SOME; c->payload = v; c->extra = 0;
     return (int64_t)(uintptr_t)c;
 }
 int64_t lhs_make_ok(int64_t v) {
-    LhsCell *c = (LhsCell *)lhs_alloc(sizeof(LhsCell));
+    LhsCell *c = (LhsCell *)lhs_rc_alloc(sizeof(LhsCell));
     c->tag = TAG_OK; c->payload = v; c->extra = 0;
     return (int64_t)(uintptr_t)c;
 }
 int64_t lhs_make_err(int64_t v) {
-    LhsCell *c = (LhsCell *)lhs_alloc(sizeof(LhsCell));
+    LhsCell *c = (LhsCell *)lhs_rc_alloc(sizeof(LhsCell));
     c->tag = TAG_ERR; c->payload = v; c->extra = 0;
     return (int64_t)(uintptr_t)c;
 }
 int64_t lhs_make_adt(int64_t tag, int64_t a, int64_t b) {
-    LhsCell *c = (LhsCell *)lhs_alloc(sizeof(LhsCell));
+    LhsCell *c = (LhsCell *)lhs_rc_alloc(sizeof(LhsCell));
     c->tag = tag; c->payload = a; c->extra = b;
     return (int64_t)(uintptr_t)c;
 }
@@ -1140,9 +1237,8 @@ int64_t lhs_spawn(int64_t fptr) {
     arg->fn = (int64_t(*)(void))(uintptr_t)fptr;
     arg->result = 0;
     if (pthread_create(&lhs_task_tab[slot].th, NULL, lhs_task_entry, arg) != 0) abort();
-    /* stash arg pointer in result temporarily via thread join */
     lhs_task_tab[slot].result = (int64_t)(uintptr_t)arg;
-    return id * 1000 + slot; /* encode id+slot */
+    return id * 1000 + slot;
 }
 
 int64_t lhs_join(int64_t handle) {
@@ -1167,7 +1263,7 @@ int64_t lhs_read_file(int64_t path) {
     long sz = ftell(f);
     if (sz < 0) { fclose(f); return lhs_make_err(lhs_heap_cstr(strerror(errno))); }
     rewind(f);
-    char *buf = (char *)lhs_alloc((size_t)sz + 1);
+    char *buf = (char *)lhs_rc_alloc((size_t)sz + 1);
     size_t n = fread(buf, 1, (size_t)sz, f);
     buf[n] = 0;
     fclose(f);
@@ -1185,6 +1281,37 @@ int64_t lhs_write_file(int64_t path, int64_t contents) {
     return lhs_make_ok(0);
 }
 
+int64_t lhs_getenv(int64_t key) {
+    if (!key) return lhs_make_none();
+    const char *v = getenv((const char *)(uintptr_t)key);
+    if (!v) return lhs_make_none();
+    return lhs_make_some(lhs_heap_cstr(v));
+}
+int64_t lhs_argc(void) { return (int64_t)1; /* AOT binaries: stub */ }
+int64_t lhs_arg(int64_t i) {
+    (void)i;
+    return lhs_make_none();
+}
+void lhs_exit(int64_t code) { _exit((int)code); }
+void lhs_sleep_ms(int64_t ms) {
+    if (ms > 0) {
+        struct timespec ts;
+        ts.tv_sec = ms / 1000;
+        ts.tv_nsec = (ms % 1000) * 1000000L;
+        nanosleep(&ts, NULL);
+    }
+}
+int64_t lhs_now_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+void lhs_eprint(int64_t p) {
+    if (p) fputs((const char *)(uintptr_t)p, stderr);
+    fputc('\n', stderr);
+}
+int64_t lhs_gc(void) { return 0; }
+
 void lhs_jit_print_i64(int64_t n) { printf("%lld\n", (long long)n); }
 void lhs_jit_print_str(const char *p) { if (p) puts(p); }
 void lhs_jit_print_f64(int64_t bits) { printf("%.17g\n", bits_to_f(bits)); }
@@ -1193,6 +1320,8 @@ void lhs_jit_abort(void) { fprintf(stderr, "assertion failed\n"); abort(); }
 extern int64_t lhs_main(void);
 int main(void) { lhs_main(); return 0; }
 "#;
+
+
 
 /// Compile subset program to a native binary via Cranelift object + system linker.
 pub fn build_aot(program: &Program, out_path: &str) -> Result<(), JitError> {
@@ -1217,7 +1346,7 @@ pub fn build_aot(program: &Program, out_path: &str) -> Result<(), JitError> {
     std::fs::write(&stubs_path, STUBS_C).map_err(|e| err(e.to_string()))?;
 
     let status = Command::new("cc")
-        .args([&obj_path, &stubs_path, "-lm", "-lpthread", "-o", out_path])
+        .args([&obj_path, &stubs_path, "-lm", "-lpthread", "-ldl", "-o", out_path])
         .status()
         .map_err(|e| err(format!("failed to run cc: {e}")))?;
     let _ = std::fs::remove_file(&obj_path);
@@ -1225,6 +1354,10 @@ pub fn build_aot(program: &Program, out_path: &str) -> Result<(), JitError> {
     if !status.success() {
         return Err(err("cc link failed for Cranelift AOT binary"));
     }
+    // Also ensure lhs_mem is built so embed/JIT share the same RC crate.
+    let _ = Command::new("cargo")
+        .args(["build", "-p", "lhs_mem", "-q"])
+        .status();
     Ok(())
 }
 
@@ -1844,7 +1977,7 @@ impl<M: Module> Gen<'_, '_, M> {
             }
             Pat::Call { name, args, .. } => {
                 let payload = self.call1(self.hosts.cell_payload, scrut);
-                let is_str_payload = name == "Err" || name == "Ok";
+                let is_str_payload = name == "Err" || name == "Ok" || name == "Some";
                 for a in args {
                     match a {
                         Pat::Ident { name: bn, .. }
@@ -1975,6 +2108,34 @@ impl<M: Module> Gen<'_, '_, M> {
                 let c = self.emit_expr(&args[1])?;
                 Ok(self.call2(self.hosts.write_file, p, c))
             }
+            "getenv" => {
+                let a = args.first().ok_or_else(|| err("getenv needs 1 arg"))?;
+                let v = self.emit_expr(a)?;
+                Ok(self.call1(self.hosts.getenv, v))
+            }
+            "argc" => Ok(self.call0(self.hosts.argc)),
+            "arg" => {
+                let a = args.first().ok_or_else(|| err("arg needs 1 arg"))?;
+                let v = self.emit_expr(a)?;
+                Ok(self.call1(self.hosts.arg, v))
+            }
+            "exit" => {
+                let a = args.first().ok_or_else(|| err("exit needs 1 arg"))?;
+                let v = self.emit_expr(a)?;
+                Ok(self.call1(self.hosts.exit, v))
+            }
+            "sleep_ms" => {
+                let a = args.first().ok_or_else(|| err("sleep_ms needs 1 arg"))?;
+                let v = self.emit_expr(a)?;
+                Ok(self.call1(self.hosts.sleep_ms, v))
+            }
+            "now_ms" => Ok(self.call0(self.hosts.now_ms)),
+            "eprint" => {
+                let a = args.first().ok_or_else(|| err("eprint needs 1 arg"))?;
+                let v = self.emit_expr(a)?;
+                Ok(self.call1(self.hosts.eprint, v))
+            }
+            "gc" => Ok(self.call0(self.hosts.gc)),
             "abs" => {
                 let a = args.first().ok_or_else(|| err("abs needs 1 arg"))?;
                 let v = self.emit_expr(a)?;

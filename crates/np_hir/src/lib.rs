@@ -305,6 +305,18 @@ impl<'a> Checker<'a> {
             "find_char".into(),
             (vec![Ty::Str, Ty::Char, Ty::I32], Ty::I32),
         );
+        self.fns.insert(
+            "getenv".into(),
+            (vec![Ty::Str], Ty::Option(Box::new(Ty::Str))),
+        );
+        self.fns.insert("argc".into(), (vec![], Ty::I32));
+        self.fns
+            .insert("arg".into(), (vec![Ty::I32], Ty::Option(Box::new(Ty::Str))));
+        self.fns.insert("exit".into(), (vec![Ty::I32], Ty::Unit));
+        self.fns.insert("sleep_ms".into(), (vec![Ty::I32], Ty::Unit));
+        self.fns.insert("now_ms".into(), (vec![], Ty::I64));
+        self.fns.insert("eprint".into(), (vec![Ty::Unknown], Ty::Unit));
+        self.fns.insert("gc".into(), (vec![], Ty::I64));
     }
 
     fn check_program(&mut self, program: &Program) {
@@ -741,6 +753,9 @@ impl<'a> Checker<'a> {
             if name == "read_file" || name == "write_file" || name == "abs" || name == "min"
                 || name == "max" || name == "assert" || name == "read_line"
                 || name == "str_slice" || name == "find_char"
+                || name == "getenv" || name == "argc" || name == "arg"
+                || name == "exit" || name == "sleep_ms" || name == "now_ms"
+                || name == "eprint" || name == "gc"
             {
                 if let Some((params, ret)) = self.fns.get(name).cloned() {
                     for (i, a) in args.iter().enumerate() {

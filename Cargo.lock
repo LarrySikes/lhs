@@ -276,7 +276,7 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "lhs_jit"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "cranelift",
  "cranelift-codegen",
@@ -291,11 +291,11 @@ dependencies = [
 
 [[package]]
 name = "lhs_mem"
-version = "0.4.0"
+version = "0.5.0"
 
 [[package]]
 name = "lhs_rt"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "lhs_mem",
  "np_eval",
@@ -332,32 +332,33 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "np_codegen"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "np_syntax",
 ]
 
 [[package]]
 name = "np_eval"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
+ "lhs_mem",
  "np_syntax",
 ]
 
 [[package]]
 name = "np_hir"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "np_syntax",
 ]
 
 [[package]]
 name = "np_syntax"
-version = "0.4.0"
+version = "0.5.0"
 
 [[package]]
 name = "npc"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "lhs_jit",
  "lhs_mem",

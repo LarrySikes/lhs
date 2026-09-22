@@ -1,20 +1,20 @@
 # Memory model notes (LHS)
 
-## Today (v0.4)
+## Today (v0.5)
 
 | Path | Allocation |
 |------|------------|
 | Interpreter (`lhsc run`) | Rust heap via `Value` |
-| Embed (`lhsc build`) | Same, inside `liblhs_rt` (calls `lhs_mem::reset` per run) |
-| Cranelift JIT | **Shared `lhs_mem` bump arena** for cells + dynamic strings |
-| Cranelift AOT | Matching C bump heap in generated stubs (same cell layout) |
+| Embed (`lhsc build`) | Same; `lhs_rt` calls `lhs_mem::reset` per run |
+| Cranelift JIT | **`lhs_mem` RC cells/strings** + bump scratch |
+| Cranelift AOT | Matching malloc-RC cells in stubs |
 
-User code has no raw pointers (except explicit `extern` / `unsafe`). Cells are
-tagged `(tag, payload, extra)` on the bump heap. Parallel tasks do not share
-mutable LHS values across threads (message-style: compute then `await`).
+`lhs_retain` / `lhs_release` / `lhs_gc` are the stable C ABI. User code has no
+raw pointers except explicit `extern` / `unsafe`. Parallel tasks do not share
+mutable LHS values across threads.
 
-## Next (optional hardening)
+## Optional later
 
-1. Mark-sweep or RC when values outlive a single `main` invocation.
-2. Optional explicit arenas for hot loops (DECISIONS D2).
-3. Unify AOT stubs to link `liblhs_mem.a` instead of duplicated C bump.
+1. Compacting mark-sweep for long sessions.
+2. Link AOT binaries directly against `liblhs_mem.a` (stubs already RC-compatible).
+3. Explicit arenas for hot loops (DECISIONS D2).
