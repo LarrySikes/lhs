@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LHS — one language, native speed</title>
+  <meta name="description" content="LHS is a small language for people tired of rewriting Python in Rust. Pleasant to write. Ships as native code. Built for humans and agents." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #0a1628;
+      --mist: #e4ebf0;
+      --paper: #f7f5f1;
+      --accent: #c45c26;
+      --line: rgba(10, 22, 40, 0.12);
+      --mute: rgba(10, 22, 40, 0.62);
+      --code-bg: #122033;
+      --code-fg: #d7e2ec;
+      --code-hi: #7dd3a0;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: "Source Sans 3", sans-serif;
+      font-size: 1.125rem;
+      line-height: 1.55;
+      background:
+        radial-gradient(1200px 600px at 80% -10%, rgba(196, 92, 38, 0.14), transparent 55%),
+        linear-gradient(165deg, #dfe8ef 0%, var(--paper) 42%, #eef1f4 100%);
+      min-height: 100vh;
+    }
+
+    /* subtle blueprint grid */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(var(--line) 1px, transparent 1px),
+        linear-gradient(90deg, var(--line) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: linear-gradient(to bottom, rgba(0,0,0,0.35), transparent 70%);
+      z-index: 0;
+    }
+
+    .wrap {
+      position: relative;
+      z-index: 1;
+      width: min(1100px, calc(100% - 2.5rem));
+      margin: 0 auto;
+    }
+
+    /* —— HERO: one composition —— */
+    .hero {
+      min-height: 100vh;
+      display: grid;
+      align-items: center;
+      padding: 2.5rem 0 3rem;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1.05fr 0.95fr;
+      gap: 3rem;
+      align-items: center;
+    }
+
+    @media (max-width: 860px) {
+      .hero-grid { grid-template-columns: 1fr; gap: 2rem; }
+      .visual { min-height: 280px; order: -1; }
+    }
+
+    .brand {
+      font-family: "Fraunces", serif;
+      font-weight: 700;
+      font-size: clamp(3.5rem, 9vw, 6.5rem);
+      line-height: 0.92;
+      letter-spacing: -0.03em;
+      margin: 0 0 1.25rem;
+    }
+
+    .brand span {
+      color: var(--accent);
+    }
+
+    h1 {
+      font-family: "Fraunces", serif;
+      font-weight: 500;
+      font-size: clamp(1.55rem, 3.2vw, 2.15rem);
+      line-height: 1.2;
+      margin: 0 0 0.85rem;
+      max-width: 18ch;
+    }
+
+    .lede {
+      margin: 0 0 1.75rem;
+      max-width: 34ch;
+      color: var(--mute);
+      font-size: 1.15rem;
+    }
+
+    .cta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem 1rem;
+      align-items: center;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.85rem 1.35rem;
+      font-family: "Source Sans 3", sans-serif;
+      font-weight: 600;
+      font-size: 1rem;
+      text-decoration: none;
+      border: 2px solid var(--ink);
+      color: var(--paper);
+      background: var(--ink);
+      transition: transform 180ms ease, background 180ms ease, color 180ms ease;
+    }
+
+    .btn:hover { transform: translateY(-2px); background: var(--accent); border-color: var(--accent); }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--ink);
+    }
+
+    .btn-ghost:hover {
+      background: var(--ink);
+      color: var(--paper);
+      border-color: var(--ink);
+    }
+
+    /* dominant visual: edge-to-edge code plane inside hero column */
+    .visual {
+      position: relative;
+      min-height: 420px;
+      border: 2px solid var(--ink);
+      background: var(--code-bg);
+      color: var(--code-fg);
+      overflow: hidden;
+      box-shadow: 12px 12px 0 rgba(10, 22, 40, 0.18);
+      animation: rise 900ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(18px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .visual pre {
+      margin: 0;
+      padding: 1.5rem 1.35rem 2rem;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: clamp(0.78rem, 1.6vw, 0.92rem);
+      line-height: 1.55;
+      white-space: pre;
+      overflow: hidden;
+    }
+
+    .visual .hi { color: var(--code-hi); }
+    .visual .cm { color: rgba(215, 226, 236, 0.45); }
+    .visual .kw { color: #f0a06a; }
+
+    .scan {
+      position: absolute;
+      left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      animation: scan 4.5s ease-in-out infinite;
+      opacity: 0.7;
+    }
+
+    @keyframes scan {
+      0% { top: 8%; }
+      50% { top: 88%; }
+      100% { top: 8%; }
+    }
+
+    .copy-in {
+      animation: rise 800ms 120ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    }
+
+    /* —— one-job sections —— */
+    section {
+      padding: 4.5rem 0;
+      border-top: 1px solid var(--line);
+    }
+
+    section h2 {
+      font-family: "Fraunces", serif;
+      font-weight: 700;
+      font-size: clamp(1.75rem, 3vw, 2.35rem);
+      margin: 0 0 0.75rem;
+      letter-spacing: -0.02em;
+    }
+
+    section p {
+      margin: 0;
+      max-width: 42rem;
+      color: var(--mute);
+    }
+
+    .cmd {
+      margin-top: 1.5rem;
+      padding: 1.1rem 1.25rem;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.95rem;
+      background: var(--ink);
+      color: var(--paper);
+      border-left: 4px solid var(--accent);
+      overflow-x: auto;
+    }
+
+    footer {
+      padding: 2.5rem 0 3.5rem;
+      border-top: 1px solid var(--line);
+      font-size: 0.95rem;
+      color: var(--mute);
+    }
+
+    footer a { color: var(--ink); }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="hero wrap">
+      <div class="hero-grid">
+        <div class="copy-in">
+          <p class="brand">LH<span>S</span></p>
+          <h1>Stop rewriting the same program twice.</h1>
+          <p class="lede">
+            One small language that feels easy day-to-day and ships as native code—
+            with tooling that agents can drive.
+          </p>
+          <div class="cta">
+            <a class="btn" href="#try">Try it</a>
+            <a class="btn btn-ghost" href="#why">Why LHS</a>
+          </div>
+        </div>
+        <div class="visual" aria-hidden="true">
+          <div class="scan"></div>
+          <pre><span class="cm"># day planner · .lhs</span>
+<span class="kw">use</span> math
+
+<span class="kw">fn</span> <span class="hi">main</span>() {
+    <span class="kw">let</span> a = <span class="kw">task</span> { square(6) }
+    <span class="kw">let</span> b = <span class="kw">task</span> { clamp(10, 0, 5) }
+    print(<span class="kw">await</span> a)
+    print(<span class="kw">await</span> b)
+}</pre>
+        </div>
+      </div>
+    </header>
+
+    <section class="wrap" id="why">
+      <h2>Python ease. Native ship.</h2>
+      <p>
+        Teams bounce between a high-productivity language and a systems language.
+        LHS aims at one coherent toolchain: typed source, fast feedback,
+        <code>lhsc build</code> to natives, Cranelift JIT/AOT when you want speed,
+        and JSON diagnostics for agent loops.
+      </p>
+    </section>
+
+    <section class="wrap" id="try">
+      <h2>Run it on your machine</h2>
+      <p>
+        Clone the repo, then check and run an example. Sources use the
+        <code>.lhs</code> extension; the compiler is <code>lhsc</code>.
+      </p>
+      <pre class="cmd">cargo run -p npc --bin lhsc -- test examples
+cargo run -p npc --bin lhsc -- run --jit examples/17_use_math.lhs</pre>
+    </section>
+  </main>
+
+  <footer class="wrap">
+    <p>
+      LHS · MIT OR Apache-2.0 ·
+      Docs live in the repo under <code>docs/</code>.
+      This page is static HTML in <code>site/</code> — host it anywhere below.
+    </p>
+  </footer>
+</body>
+</html>

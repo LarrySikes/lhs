@@ -1,0 +1,34 @@
+WHERE TO PUT THE LHS AD PAGE
+============================
+
+The page is:  site/index.html   (static; no build step)
+
+Easiest free options
+--------------------
+
+1) GitHub Pages  (best if the repo is on GitHub)
+   - Push this repo to GitHub (public or private with Pages).
+   - Settings → Pages → Deploy from branch → /site  (or root + move files).
+   - URL looks like:  https://YOURUSER.github.io/REPO/
+   - Custom domain: add a CNAME in DNS + Pages settings.
+
+2) Cloudflare Pages
+   - Connect the GitHub/GitLab repo, set root directory to `site`.
+   - Free HTTPS + custom domain. Fast CDN.
+
+3) Netlify or Vercel
+   - Drag-drop the `site` folder, or connect git with publish dir = `site`.
+   - Free tier is enough for a landing page.
+
+4) Neocities / own VPS
+   - Upload index.html. Fine for a personal / indie presence.
+
+What you need for a public URL
+------------------------------
+- A git host OR a static host account
+- Optional: a domain you already own (Point DNS to the host)
+
+Suggested next step
+-------------------
+If you create a GitHub repo for newproj, I can wire GitHub Pages
+(or Cloudflare) and give you the exact live URL.
