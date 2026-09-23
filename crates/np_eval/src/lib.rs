@@ -6,7 +6,7 @@ use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
-use np_syntax::{BinOp, Block, Expr, FnItem, Item, Pat, Program, Stmt, TypeItem};
+use np_syntax::{BinOp, Block, Expr, FnItem, Item, Pat, Program, Stmt, TypeItem, TypeRef};
 
 /// Handle for a parallel `task { ... }` (join once via `await`).
 #[derive(Debug)]
@@ -188,7 +188,10 @@ impl<'a, W: Write> Interpreter<'a, W> {
                 let r = self.eval_expr(env, rhs)?;
                 eval_binary(*op, &l, &r)
             }
-            Expr::Cast { expr, .. } => self.eval_expr(env, expr),
+            Expr::Cast { expr, ty, .. } => {
+                let v = self.eval_expr(env, expr)?;
+                cast_value(v, ty)
+            },
             Expr::Is { expr, pat, .. } => {
                 let v = self.eval_expr(env, expr)?;
                 Ok(Value::Bool(match_pat(&v, pat, &mut HashMap::new())))
@@ -636,11 +639,49 @@ fn truthy(v: &Value) -> Result<bool> {
     }
 }
 
+fn cast_value(v: Value, ty: &TypeRef) -> Result<Value> {
+    let TypeRef::Named { name, .. } = ty else {
+        return Ok(v);
+    };
+    match name.as_str() {
+        "i32" | "i64" | "int" => match v {
+            Value::Int(n) => Ok(Value::Int(n)),
+            Value::Char(c) => Ok(Value::Int(c as i64)),
+            Value::Bool(b) => Ok(Value::Int(if b { 1 } else { 0 })),
+            Value::Float(f) => Ok(Value::Int(f as i64)),
+            other => Ok(other),
+        },
+        "f64" | "float" => match v {
+            Value::Float(f) => Ok(Value::Float(f)),
+            Value::Int(n) => Ok(Value::Float(n as f64)),
+            other => Ok(other),
+        },
+        "char" => match v {
+            Value::Char(c) => Ok(Value::Char(c)),
+            Value::Int(n) => {
+                let c = char::from_u32(n as u32).unwrap_or('\0');
+                Ok(Value::Char(c))
+            }
+            other => Ok(other),
+        },
+        "str" => match v {
+            Value::Str(s) => Ok(Value::Str(s)),
+            Value::Char(c) => Ok(Value::Str(c.to_string())),
+            Value::Int(n) => Ok(Value::Str(n.to_string())),
+            Value::Float(f) => Ok(Value::Str(f.to_string())),
+            other => Ok(other),
+        },
+        _ => Ok(v),
+    }
+}
+
 fn eval_binary(op: BinOp, l: &Value, r: &Value) -> Result<Value> {
     use BinOp::*;
     match (op, l, r) {
         (Add, Value::Int(a), Value::Int(b)) => Ok(Value::Int(a + b)),
         (Add, Value::Str(a), Value::Str(b)) => Ok(Value::Str(format!("{a}{b}"))),
+        (Add, Value::Str(a), Value::Char(b)) => Ok(Value::Str(format!("{a}{b}"))),
+        (Add, Value::Char(a), Value::Str(b)) => Ok(Value::Str(format!("{a}{b}"))),
         (Add, Value::Str(a), Value::Int(b)) => Ok(Value::Str(format!("{a}{b}"))),
         (Add, Value::Int(a), Value::Str(b)) => Ok(Value::Str(format!("{a}{b}"))),
         (Sub, Value::Int(a), Value::Int(b)) => Ok(Value::Int(a - b)),
@@ -656,15 +697,36 @@ fn eval_binary(op: BinOp, l: &Value, r: &Value) -> Result<Value> {
         (Sub, Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 - b)),
         (Mul, Value::Float(a), Value::Int(b)) => Ok(Value::Float(a * *b as f64)),
         (Mul, Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 * b)),
+        (Div, Value::Float(a), Value::Int(b)) => Ok(Value::Float(a / *b as f64)),
+        (Div, Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 / b)),
         (Eq, Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a == b)),
         (Ne, Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a != b)),
         (Lt, Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a < b)),
         (Le, Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a <= b)),
         (Gt, Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a > b)),
         (Ge, Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a >= b)),
+        (Eq, Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a == b)),
+        (Ne, Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a != b)),
+        (Lt, Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a < b)),
+        (Le, Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a <= b)),
+        (Gt, Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a > b)),
+        (Ge, Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a >= b)),
+        (Eq, Value::Float(a), Value::Int(b)) => Ok(Value::Bool(*a == *b as f64)),
+        (Ne, Value::Float(a), Value::Int(b)) => Ok(Value::Bool(*a != *b as f64)),
+        (Lt, Value::Float(a), Value::Int(b)) => Ok(Value::Bool(*a < *b as f64)),
+        (Le, Value::Float(a), Value::Int(b)) => Ok(Value::Bool(*a <= *b as f64)),
+        (Gt, Value::Float(a), Value::Int(b)) => Ok(Value::Bool(*a > *b as f64)),
+        (Ge, Value::Float(a), Value::Int(b)) => Ok(Value::Bool(*a >= *b as f64)),
+        (Eq, Value::Int(a), Value::Float(b)) => Ok(Value::Bool(*a as f64 == *b)),
+        (Ne, Value::Int(a), Value::Float(b)) => Ok(Value::Bool(*a as f64 != *b)),
+        (Lt, Value::Int(a), Value::Float(b)) => Ok(Value::Bool((*a as f64) < *b)),
+        (Le, Value::Int(a), Value::Float(b)) => Ok(Value::Bool((*a as f64) <= *b)),
+        (Gt, Value::Int(a), Value::Float(b)) => Ok(Value::Bool((*a as f64) > *b)),
+        (Ge, Value::Int(a), Value::Float(b)) => Ok(Value::Bool((*a as f64) >= *b)),
         (Eq, Value::Str(a), Value::Str(b)) => Ok(Value::Bool(a == b)),
         (Ne, Value::Str(a), Value::Str(b)) => Ok(Value::Bool(a != b)),
         (Eq, Value::Char(a), Value::Char(b)) => Ok(Value::Bool(a == b)),
+        (Ne, Value::Char(a), Value::Char(b)) => Ok(Value::Bool(a != b)),
         (Lt, Value::Char(a), Value::Char(b)) => Ok(Value::Bool(a < b)),
         (Le, Value::Char(a), Value::Char(b)) => Ok(Value::Bool(a <= b)),
         (Gt, Value::Char(a), Value::Char(b)) => Ok(Value::Bool(a > b)),

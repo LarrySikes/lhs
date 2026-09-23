@@ -1,0 +1,258 @@
+LHS — DETAILED TASK LIST (YouTube announcement)
+================================================
+Saved: site/youtube/TASKS.txt
+For: publishing your LHS announcement video
+Repo: https://github.com/LarrySikes/lhs
+Landing page: https://larrysikes.github.io/lhs/
+
+Read this like a cookbook. Do one numbered step. Check it off.
+If you stop mid-way, open this file again — everything you need is here.
+
+
+PART A — FIGURE OUT WHAT YOU ALREADY HAVE
+-----------------------------------------
+[ ] A1. Open a file browser (Files / Nautilus / Dolphin / Finder).
+
+[ ] A2. Go to this folder on your computer:
+        /home/iwlnx/src/newproj/site/youtube/
+
+[ ] A3. Confirm you see these two files:
+        - ANNOUNCEMENT.txt   (script + YouTube text)
+        - TASKS.txt          (this checklist)
+        - lhs-youtube-thumbnail.png  (picture for the video)
+
+[ ] A4. Open ANNOUNCEMENT.txt in a text editor and leave it open.
+        You will copy from it later.
+
+
+PART B — DECIDE HOW YOU WILL RECORD (pick ONE)
+----------------------------------------------
+Option 1 — Phone (simplest)
+[ ] B1a. Use your phone camera for your face.
+[ ] B1b. Later, edit on the phone OR just upload the raw phone video
+         and talk about the website (no terminal demo).
+
+Option 2 — Computer (better demo)
+[ ] B2a. Install or open OBS Studio (free screen + webcam recorder).
+         Linux tip: search “OBS” in your software store, or use:
+           sudo apt install obs-studio
+[ ] B2b. Or use any screen recorder you already know
+         (SimpleScreenRecorder, Kazam, Zoom record, etc.).
+
+Pick one and stick with it for the first video.
+Write your choice here: _______________________
+
+
+PART C — PREPARE THE WORDS (before you hit Record)
+--------------------------------------------------
+[ ] C1. Choose a YouTube TITLE (copy one exactly):
+
+    Introducing LHS — one language instead of two
+
+    (Alternates are in ANNOUNCEMENT.txt if you prefer.)
+
+[ ] C2. Practice the script OUT LOUD once from ANNOUNCEMENT.txt
+        (section “SPEAKING SCRIPT”).
+        Goal: about 3 minutes. Mistakes are fine — you can re-record.
+
+[ ] C3. Write these three links on a sticky note next to your keyboard:
+        Landing: https://larrysikes.github.io/lhs/
+        GitHub:  https://github.com/LarrySikes/lhs
+        This folder: /home/iwlnx/src/newproj/site/youtube/
+
+
+PART D — PREPARE THE COMPUTER DEMO (only if using Option 2)
+-----------------------------------------------------------
+[ ] D1. Open a terminal.
+
+[ ] D2. Type this and press Enter:
+        cd /home/iwlnx/src/newproj
+
+[ ] D3. Make sure the project builds (first time may take a few minutes):
+        cargo build -p npc --bin lhsc
+
+[ ] D4. Practice this command (you will run it on camera):
+        cargo run -p npc --bin lhsc -- test examples
+
+[ ] D5. Practice this second command:
+        cargo run -p npc --bin lhsc -- run --jit examples/17_use_math.lhs
+
+[ ] D5b. Practice STANDALONE builds (two-language demos — do these):
+
+        cargo build -p npc --bin lhsc
+
+        # BEST for the two-language pitch (numeric → binary):
+        ./target/debug/lhsc build apps/mandelbrot.lhs -o mandelbrot
+        ./mandelbrot
+
+        ./target/debug/lhsc build apps/busy_bench.lhs -o busy_bench
+        ./busy_bench
+
+        # Optional fuller app (shipping story, not classic numeric rewrite):
+        ./target/debug/lhsc build apps/day_planner.lhs -o day_planner
+        ./day_planner
+        At the > prompt type:  month
+        Then type:             9/21
+        Then type:             quit
+
+[ ] D6. Open the landing page in your browser BEFORE recording:
+        https://larrysikes.github.io/lhs/
+        Keep that tab ready for the end of the video.
+
+
+PART E — RECORD THE VIDEO
+-------------------------
+Rough order (follow the script):
+
+[ ] E1. Start recording.
+
+[ ] E2. Look at the camera. Say the HOOK
+        (two languages / rewrite problem) — about 20–30 seconds.
+
+[ ] E3. Say WHAT LHS is
+        (one language, .lhs files, lhsc compiler) — about 25 seconds.
+
+[ ] E4. Say the COMPARE + HONEST part (important — do not skip):
+        “Julia and Nim already attack this at scale.
+         Rust is a great second language.
+         LHS is a small open MVP — write, build, binary —
+         not a claim we beat those ecosystems.”
+        About 30–40 seconds. Exact words are in ANNOUNCEMENT.txt
+        under [COMPARE] and [HONEST].
+
+[ ] E5. If computer demo:
+        Switch to terminal. Run the commands from D4 and D5.
+        Let the output stay on screen a few seconds.
+
+[ ] E5b. Mandelbrot (say out loud):
+        “People often rewrite numeric code in C. Here we keep LHS
+         and ship a standalone binary.”
+        Build and run mandelbrot from D5b. Let the picture draw.
+
+[ ] E5c. Busy bench:
+        Build and run busy_bench. Point at serial/parallel timings.
+
+[ ] E5d. Optional — day planner:
+        Build and run day_planner; type month, 9/21, quit.
+
+[ ] E6. End on the landing page in the browser.
+        Say the URL slowly once:
+        “larrysikes dot github dot io slash lhs”
+
+[ ] E7. Ask viewers to try mandelbrot or the bench, or star the repo.
+        Optional closing line: “Tell me how you’d compare us to Julia or Nim.”
+
+
+[ ] E8. Stop recording. Save the file somewhere easy, for example:
+        /home/iwlnx/Videos/lhs-announcement.mp4
+        Write the exact path here: _______________________________
+
+
+PART F — CREATE / LOG INTO YOUTUBE
+----------------------------------
+[ ] F1. Open https://www.youtube.com in your browser.
+
+[ ] F2. Sign in with the Google account you want to own the video.
+        (If you do not have one, create a Google account first at
+         https://accounts.google.com — ask a helper if needed.)
+
+[ ] F3. Click your profile picture (top right) → “YouTube Studio”
+        OR go to: https://studio.youtube.com
+
+
+PART G — UPLOAD THE VIDEO
+-------------------------
+[ ] G1. In YouTube Studio, click the CREATE button (top right)
+        → “Upload videos”.
+
+[ ] G2. Drag your video file onto the page, OR click “Select files”
+        and choose the file from Part E8.
+
+[ ] G3. Wait until the upload finishes (bar reaches 100%).
+        Processing may continue — that is normal.
+
+
+PART H — FILL IN THE YOUTUBE DETAILS
+------------------------------------
+[ ] H1. TITLE: paste
+        Introducing LHS — one language instead of two
+
+[ ] H2. DESCRIPTION: open ANNOUNCEMENT.txt, copy the whole
+        “DESCRIPTION (paste into YouTube)” section, paste into YouTube.
+
+[ ] H3. THUMBNAIL:
+        - Click “Upload thumbnail” (or “Show more” if needed)
+        - Choose this file:
+          /home/iwlnx/src/newproj/site/youtube/lhs-youtube-thumbnail.png
+        - If YouTube says you need more subscribers for custom thumbnails,
+          skip this step for now — the video still works.
+
+[ ] H4. PLAYLIST: optional. Skip for the first video.
+
+[ ] H5. AUDIENCE: select “No, it’s not made for kids”
+        (unless you intentionally want “made for kids”).
+
+[ ] H6. Click NEXT through the checks until Visibility.
+
+
+PART I — VISIBILITY (important)
+-------------------------------
+[ ] I1. First choose UNLISTED (only people with the link can watch).
+        Click SAVE / PUBLISH.
+
+[ ] I2. Open the video link yourself. Watch it once.
+        Check: sound OK, picture OK, links in description work.
+
+[ ] I3. If something is wrong: fix description/thumbnail, or re-upload.
+
+[ ] I4. When you are happy: YouTube Studio → your video → Visibility
+        → change to PUBLIC → SAVE.
+
+[ ] I5. Copy the public video URL and write it here:
+        _______________________________________________
+
+
+PART J — AFTER IT IS PUBLIC (tell people)
+-----------------------------------------
+[ ] J1. Pin a comment under the video with:
+        Landing page: https://larrysikes.github.io/lhs/
+        Source: https://github.com/LarrySikes/lhs
+
+[ ] J2. Email or text that video link to a few people you trust.
+
+[ ] J3. Optional: paste the link in places you already use
+        (Facebook, LinkedIn, a Discord, a forum).
+        You do NOT have to do all of them.
+
+[ ] J4. Optional: add the YouTube link to the GitHub README later
+        (ask the AI helper: “add my YouTube link to the README”).
+
+
+PART K — IF YOU GET STUCK
+-------------------------
+Problem: “I cannot find the thumbnail”
+  → Folder: /home/iwlnx/src/newproj/site/youtube/
+  → File:   lhs-youtube-thumbnail.png
+
+Problem: “cargo command fails”
+  → Still record the video using only the website demo (Part E6).
+    The announcement is still valid.
+
+Problem: “I forgot the script”
+  → Open ANNOUNCEMENT.txt again. Read it. Or use the Shorts cut
+    at the bottom (45 seconds).
+
+Problem: “I want help clicking YouTube”
+  → Ask a younger friend/family member to sit with you for Part G–I
+    while YOU read this checklist out loud.
+
+
+DONE WHEN
+---------
+[ ] Video is PUBLIC on YouTube
+[ ] Description has the landing page + GitHub links
+[ ] You can open https://larrysikes.github.io/lhs/ from the description
+[ ] You wrote your video URL in I5 above
+
+
+END OF CHECKLIST

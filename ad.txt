@@ -1,0 +1,3 @@
+LHS is our attempt at the two-language problem: one language that stays pleasant to write and ships as native code.
+
+Visit: https://larrysikes.github.io/lhs/

@@ -6,7 +6,7 @@
 
 **Compiler:** `lhsc` · **Sources:** `.lhs` · **License:** MIT OR Apache-2.0
 
-[`docs/OVERVIEW.md`](docs/OVERVIEW.md) · [`docs/STATUS.txt`](docs/STATUS.txt) · [`docs/PACKAGES.md`](docs/PACKAGES.md)
+[`docs/USER_MANUAL.txt`](docs/USER_MANUAL.txt) · [`docs/OVERVIEW.md`](docs/OVERVIEW.md) · [`docs/STATUS.txt`](docs/STATUS.txt) · [`docs/PACKAGES.md`](docs/PACKAGES.md)
 
 ## Commands
 

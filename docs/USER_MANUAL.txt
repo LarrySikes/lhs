@@ -1,0 +1,363 @@
+LHS USER MANUAL
+===============
+Language: LHS (.lhs files)
+Compiler: lhsc
+Version:  v0.6 (2026)
+Repo:     https://github.com/LarrySikes/lhs
+Site:     https://larrysikes.github.io/lhs/
+
+This is the beginner guide. Read one section at a time.
+Saved at: docs/USER_MANUAL.txt
+
+
+1. WHAT LHS IS
+--------------
+LHS is a small programming language. You write text files that end in
+.lhs, then use a program called lhsc to check them, run them, or turn
+them into a standalone Linux program.
+
+Goal (short): one language that is pleasant to write and can ship as
+native code — aimed at the “two-language problem” (prototype in one
+language, rewrite in another). LHS is an MVP. It does not replace
+Python, Rust, Julia, or Nim.
+
+
+2. WHAT YOU NEED
+----------------
+- A Linux computer (this project is developed on Linux)
+- Rust / Cargo installed (https://rustup.rs)
+- This repository on disk, for example:
+    /home/iwlnx/src/newproj
+
+Check Cargo:
+    cargo --version
+
+If that prints a version, you are ready.
+
+
+3. BUILD THE COMPILER (once per machine / after pull)
+-----------------------------------------------------
+Open a terminal and type:
+
+    cd /home/iwlnx/src/newproj
+    cargo build -p npc --bin lhsc
+
+The program appears at:
+
+    ./target/debug/lhsc
+
+You can always call it through Cargo instead:
+
+    cargo run -p npc --bin lhsc -- <command...>
+
+In the rest of this manual, both forms mean the same thing.
+Examples use ./target/debug/lhsc after you have built it.
+
+
+4. FIRST PROGRAM (5 minutes)
+----------------------------
+Create a file hello.lhs with:
+
+    fn main() {
+        print("hello, LHS")
+    }
+
+Run it:
+
+    ./target/debug/lhsc run hello.lhs
+
+You should see:
+
+    hello, LHS
+
+Or try a shipped example:
+
+    ./target/debug/lhsc run examples/01_hello.lhs
+
+
+5. ALL lhsc COMMANDS
+--------------------
+From the project root:
+
+    lhsc check <file.lhs>           Check types / catch errors
+    lhsc check --json <file.lhs>    Same, machine-readable errors
+    lhsc run <file.lhs>             Run with the interpreter
+    lhsc run --jit <file.lhs>       Run with Cranelift JIT (faster for many programs)
+    lhsc watch <file.lhs>           Re-run when the file changes
+    lhsc watch --jit <file.lhs>     Watch + JIT
+    lhsc fmt <file.lhs>             Print formatted source
+    lhsc fmt --write <file.lhs>     Format and save
+    lhsc test examples              Run the example suite
+    lhsc lib                        List builtins and stdlib modules
+    lhsc build <file.lhs> -o NAME   Make a standalone executable named NAME
+
+Help:
+
+    ./target/debug/lhsc --help
+
+
+6. RUN vs BUILD (important)
+---------------------------
+RUN  = needs lhsc (or cargo) every time.
+BUILD = creates a normal program you can run by itself.
+
+Build (recommended for demos and sharing):
+
+    ./target/debug/lhsc build apps/mandelbrot.lhs -o mandelbrot
+    ./mandelbrot
+
+After that, no cargo and no lhsc are required to run ./mandelbrot.
+
+Other build options (advanced):
+
+    --emit=c           Small C subset only (not full language)
+    --emit=cranelift   AOT for a language subset
+
+If those fail with “outside subset” / “no ADT”, use the default build
+(no --emit). Default build works for the full language (embed).
+
+
+7. LANGUAGE BASICS
+------------------
+7.1 main
+  Every program needs:
+
+      fn main() {
+          ...
+      }
+
+7.2 Variables
+
+      let n: i32 = 42
+      let name = "world"
+      let x: f64 = 3.5
+
+7.3 Print
+
+      print("hi")
+      print(n)
+      print("n=" + n)
+
+7.4 If
+
+      if n > 0 {
+          print("positive")
+      } else {
+          print("not positive")
+      }
+
+  Note: there is no else-if sugar yet. Nest if/else instead.
+
+7.5 Functions
+
+      fn double(n: i32) -> i32 {
+          n * 2
+      }
+
+7.6 Types you will see
+  i32     integers
+  f64     floating point
+  str     text
+  char    one character (e.g. 'A')
+  bool    true / false (usually from comparisons)
+
+7.7 Option and Result (no null)
+
+      # Option: value or nothing
+      # Result: Ok(value) or Err(message)
+
+  See examples/03_option_match.lhs and examples/04_result.lhs
+
+7.8 Match / ADTs
+
+      type Shape {
+          Circle { r: f64 },
+          Rect { w: f64, h: f64 },
+      }
+
+  See examples/05_adt.lhs
+
+7.9 Structs and methods
+  See examples/06_struct_method.lhs
+
+7.10 Parallel tasks
+
+      let a = task { double(3) }
+      let b = task { double(4) }
+      print(await a + await b)
+
+  Tasks do not share mutable state. They also do not capture outer
+  locals — use literals or call helpers with arguments.
+  See examples/08_tasks.lhs and apps/busy_bench.lhs
+
+7.11 Loops
+  There is no while/for yet. Use recursion (call yourself with n-1).
+  Keep recursion depth modest (a few hundred) or the interpreter may
+  stack-overflow.
+
+
+8. FILES AND STRINGS
+--------------------
+  write_file(path, text)  -> Result
+  read_file(path)         -> Result
+  read_line()             -> Option (one line from keyboard)
+  str_slice(s, start, end)
+  find_char(s, ch, from)
+  s.len()
+  s[i]                    character at index i
+
+  Time: now_ms()
+  Sleep: sleep_ms(n)
+
+See examples/11_file_io.lhs
+
+
+9. MODULES (use)
+----------------
+Put libraries under stdlib/ as name.lhs, then:
+
+    use math
+    use io
+
+Search order: LHS_PATH, then stdlib/, then the source folder.
+
+List what is available:
+
+    ./target/debug/lhsc lib
+
+Try:
+
+    ./target/debug/lhsc run examples/17_use_math.lhs
+
+Details: docs/PACKAGES.md
+
+
+10. SAMPLE APPS
+---------------
+All under apps/. See also apps/README.md
+
+10.1 Mandelbrot (best two-language demo)
+    ./target/debug/lhsc run apps/mandelbrot.lhs
+    ./target/debug/lhsc build apps/mandelbrot.lhs -o mandelbrot
+    ./mandelbrot
+
+10.2 Busy bench (numeric + parallel)
+    ./target/debug/lhsc build apps/busy_bench.lhs -o busy_bench
+    ./busy_bench
+
+10.3 Day planner (interactive)
+    ./target/debug/lhsc build apps/day_planner.lhs -o day_planner
+    ./day_planner
+
+  Useful commands at the > prompt:
+    help
+    day | week | month
+    monday | september | september 21 | 9/21
+    goto 9/21
+    tasks | tadd | aadd | contacts
+    save | quit
+
+  Data files:
+    /tmp/lhs_planner.dat
+    /tmp/lhs_contacts.dat
+
+  Do NOT use examples/14_day_planner.lhs for interaction — that file is
+  a short demo and exits on purpose. Use apps/day_planner.lhs.
+
+
+11. EXAMPLES FOLDER
+-------------------
+examples/01_hello.lhs          Hello
+examples/02_locals.lhs         Variables
+examples/03_option_match.lhs   Option + match
+examples/04_result.lhs         Result
+examples/05_adt.lhs            Algebraic data types
+examples/06_struct_method.lhs  Structs / methods
+examples/07_flow_narrow.lhs    Flow narrowing
+examples/08_tasks.lhs          Parallel tasks
+examples/09_c_abi.lhs          C ABI shape
+examples/10_bad_type.lhs       Deliberate type error (for check)
+examples/11_file_io.lhs        Files
+examples/12_native_tasks.lhs   Tasks (native-friendly)
+examples/13_stdlib.lhs         Builtins
+examples/14_day_planner.lhs    Non-interactive todo demo
+examples/15_parallel_busy.lhs  More tasks
+examples/16_stdlib_ext.lhs     Extra builtins
+examples/17_use_math.lhs       use math / use io
+
+Run all that should pass:
+
+    ./target/debug/lhsc test examples
+
+
+12. HOW LHS COMPARES (honest)
+-----------------------------
+  Julia / Nim   Mature; much larger ecosystems. LHS is smaller (MVP).
+  Rust          Strong “second” language; LHS aims to stay easier day-to-day.
+  Python + C    The classic split LHS tries to shrink.
+  LHS today     Write → lhsc build → standalone binary; small clear toolchain.
+
+
+13. TROUBLESHOOTING
+-------------------
+Problem: command not found: lhsc
+  Fix: cd to the repo and use ./target/debug/lhsc
+       or: cargo run -p npc --bin lhsc -- ...
+
+Problem: cargo build fails
+  Fix: install Rust from https://rustup.rs then retry section 3.
+
+Problem: unsupported op ...
+  Fix: language/runtime gap — try a simpler expression, or ask for a fix.
+       Recent fixes include char !=, float compare, and as f64.
+
+Problem: string index out of range
+  Fix: check length before s[i]. Prefer nested ifs; && / || may still
+       evaluate both sides in the interpreter.
+
+Problem: undefined variable inside task { ... }
+  Fix: tasks do not see outer locals. Pass values as arguments or use
+       literals inside the task.
+
+Problem: stack overflow
+  Fix: recursion too deep. Reduce depth or split into smaller rounds.
+
+Problem: --emit=cranelift or --emit=c fails
+  Fix: use default build (no --emit) for full-language apps.
+
+Problem: day planner says “unknown”
+  Fix: type help. Use month, view month, september 21, goto 9/21, etc.
+
+
+14. WHERE TO READ MORE
+----------------------
+  docs/OVERVIEW.md     System map
+  docs/STATUS.txt      What is done
+  docs/PACKAGES.md     Modules and builtins
+  docs/AGENT.md        Automation / JSON diagnostics
+  docs/MANIFESTO.md    Goals
+  apps/README.md       Sample apps
+  site/youtube/        YouTube script and task checklist
+  README.md            Short project home
+
+
+15. QUICK CHEAT SHEET
+---------------------
+    cd /home/iwlnx/src/newproj
+    cargo build -p npc --bin lhsc
+
+    ./target/debug/lhsc test examples
+    ./target/debug/lhsc run --jit examples/17_use_math.lhs
+    ./target/debug/lhsc lib
+
+    ./target/debug/lhsc build apps/mandelbrot.lhs -o mandelbrot
+    ./mandelbrot
+
+    ./target/debug/lhsc build apps/busy_bench.lhs -o busy_bench
+    ./busy_bench
+
+    ./target/debug/lhsc build apps/day_planner.lhs -o day_planner
+    ./day_planner
+
+
+END OF USER MANUAL

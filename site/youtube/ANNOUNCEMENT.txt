@@ -1,0 +1,203 @@
+YOUTUBE ANNOUNCEMENT — LHS
+==========================
+
+Live site: https://larrysikes.github.io/lhs/
+Repo:      https://github.com/LarrySikes/lhs
+Thumbnail: site/youtube/lhs-youtube-thumbnail.png  (copy from generated asset)
+
+
+TITLE (pick one)
+----------------
+A) Introducing LHS — one language instead of two
+B) LHS: write once, ship native (open source)
+C) I built a language for the two-language problem
+
+
+DESCRIPTION (paste into YouTube)
+--------------------------------
+LHS is a small open-source language aimed at the “two-language problem”:
+pleasant day-to-day coding that can still ship as native code.
+
+This is an MVP announcement — not a claim that we replaced Python + Rust,
+and not a claim that we beat Julia or Nim. Those projects already attack
+this problem at scale. LHS is an early, honest take you can clone and run:
+one small language, a working compiler (lhsc), and demos that build to
+real standalone binaries.
+
+Landing page: https://larrysikes.github.io/lhs/
+Source: https://github.com/LarrySikes/lhs
+User manual: docs/USER_MANUAL.txt in the repo
+
+How we compare (honest):
+  • Julia / Nim — mature ecosystems; LHS is much smaller (MVP)
+  • Rust — great “second language”; LHS aims to stay easier day-to-day
+  • Python + C/Rust — the split we’re trying to shrink
+  • LHS today — clear write → lhsc build → binary path; agent-friendly CLI
+
+Try it:
+  cargo run -p npc --bin lhsc -- test examples
+  cargo run -p npc --bin lhsc -- run --jit examples/17_use_math.lhs
+
+Two-language demos (numeric → standalone binary, no rewrite):
+  ./target/debug/lhsc build apps/mandelbrot.lhs -o mandelbrot && ./mandelbrot
+  ./target/debug/lhsc build apps/busy_bench.lhs -o busy_bench && ./busy_bench
+
+Also an interactive day planner:
+  ./target/debug/lhsc build apps/day_planner.lhs -o day_planner && ./day_planner
+
+What you get today:
+  • lhsc check / run / watch / build / lib
+  • Interpreter + native embed build (standalone executables)
+  • Cranelift JIT/AOT for a large subset
+  • Option/Result, structs, tasks, file I/O, use modules
+  • JSON diagnostics for agent-friendly tooling
+  • Sample apps: mandelbrot, busy_bench, day_planner
+
+License: MIT OR Apache-2.0
+
+#programming #opensource #compilers #lhs #julialang #nimlang
+
+
+CHAPTERS (if ~5–6 min)
+----------------------
+0:00  Why two languages hurts
+0:35  What LHS is
+1:00  Honest compare (Julia, Nim, Rust, Python+C)
+1:35  Demo: test suite + JIT example
+2:15  Demo: Mandelbrot → standalone binary
+3:15  Demo: busy_bench (parallel numeric)
+3:55  Optional: day planner app
+4:30  What’s real vs what’s next
+5:10  Where to try it
+
+
+SPEAKING SCRIPT (~5–6 minutes)
+-----------------------------
+
+[HOOK — look at camera]
+For years, teams prototype in one language and rewrite in another.
+Python for speed of writing. Rust or C for shipping. That rewrite is
+expensive — and it’s what people call the two-language problem.
+
+[WHAT]
+I built LHS — a small open-source language that tries to close that gap:
+one language that stays pleasant to write, and can ship as native code.
+The compiler is called lhsc. Source files end in .lhs.
+
+[COMPARE — say this clearly; do not overclaim]
+I’m not saying LHS beats the field. Julia and Nim already attack this
+problem at scale — bigger ecosystems, more users, more libraries.
+Rust is an excellent systems language when you need that second language.
+Python plus C or Rust is still how a lot of real work ships.
+
+What LHS is today: an early MVP. A small toolchain you can understand.
+A clear path from source to a standalone binary. And diagnostics that
+play nicely with AI agents. We’re competing on honesty and clarity —
+not on “we replaced everyone.”
+
+[HONEST]
+So: learning, experiments, early tools — not a drop-in replacement for
+Python, Rust, Julia, or Nim.
+
+[DEMO 1 — screen share terminal]
+Here’s the repo. From the project root:
+
+  cargo run -p npc --bin lhsc -- test examples
+
+And a quick JIT run:
+
+  cargo run -p npc --bin lhsc -- run --jit examples/17_use_math.lhs
+
+You get check, run, watch, build, and modules with “use”.
+
+[DEMO 2 — Mandelbrot — BEST two-language example]
+People often sketch numeric code in a high-level language, then rewrite
+it in C when they need a fast native program. Here’s Mandelbrot in LHS —
+float math, nested work — and we ship it as a normal binary. No rewrite.
+
+  cargo build -p npc --bin lhsc
+  ./target/debug/lhsc build apps/mandelbrot.lhs -o mandelbrot
+  ./mandelbrot
+
+(Let the ASCII fractal paint. Point at the ms= line.)
+Same source. Standalone executable. That’s the idea.
+
+[DEMO 3 — busy_bench — parallel numeric]
+Same story with a timed hot loop and parallel tasks:
+
+  ./target/debug/lhsc build apps/busy_bench.lhs -o busy_bench
+  ./busy_bench
+
+Serial and parallel checksums print with timings.
+
+[DEMO 4 — optional — day planner]
+For a fuller app (shipping story — not the classic numeric rewrite):
+
+  ./target/debug/lhsc build apps/day_planner.lhs -o day_planner
+  ./day_planner
+  → month
+  → 9/21
+  → quit
+
+[WHAT’S IN / OUT]
+In: typed language, natives via embed build or Cranelift, parallel tasks,
+file I/O, a small stdlib, sample apps (mandelbrot, bench, planner).
+Still ahead: bigger ecosystem, hardening, more packages — the gap vs
+Julia and Nim.
+
+[CTA]
+Landing page is on the screen — larrysikes.github.io/lhs —
+and the source is on GitHub under LarrySikes/lhs.
+There is a plain-text user manual in the repo: docs/USER_MANUAL.txt.
+If this idea matters to you, star the repo, build mandelbrot or the bench,
+and tell me what you’d ship first.
+
+Thanks for watching.
+
+
+SHORTS / 45-SECOND CUT
+----------------------
+Two languages. One rewrite. Too much cost.
+Julia and Nim already fight this. LHS is a small open MVP.
+Watch: Mandelbrot in one language — then a standalone binary.
+No C rewrite. Link below.
+
+
+ON-CAMERA COMMAND CHEAT SHEET (print or sticky note)
+----------------------------------------------------
+cd /home/iwlnx/src/newproj
+cargo build -p npc --bin lhsc
+
+cargo run -p npc --bin lhsc -- test examples
+cargo run -p npc --bin lhsc -- run --jit examples/17_use_math.lhs
+
+./target/debug/lhsc build apps/mandelbrot.lhs -o mandelbrot
+./mandelbrot
+
+./target/debug/lhsc build apps/busy_bench.lhs -o busy_bench
+./busy_bench
+
+# optional app demo
+./target/debug/lhsc build apps/day_planner.lhs -o day_planner
+./day_planner
+  → month / 9/21 / quit
+
+Do NOT use examples/14_day_planner.lhs (exits on purpose).
+
+
+COMPARE CARD (optional — hold up or put on screen)
+--------------------------------------------------
+Julia / Nim .... mature; big ecosystems
+Rust ........... strong “second” language
+Python + C ..... the split we’re shrinking
+LHS ............ small MVP; write → build → binary
+
+
+HOW TO PUBLISH
+--------------
+1. Record with the script (phone or OBS + screen share).
+2. Upload to YouTube → unlisted first to check.
+3. Title + description from this file.
+4. Thumbnail: use the PNG in site/youtube/.
+5. Add links in description; pin a comment with the landing URL.
+6. Set to Public when ready.

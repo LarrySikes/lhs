@@ -51,6 +51,71 @@ fn prompt(msg: str) -> str {
     }
 }
 
+# Lowercase A-Z; leave everything else alone.
+fn lower_char(c: char) -> char {
+    if c >= 'A' && c <= 'Z' {
+        (c as i32 + 32) as char
+    } else {
+        c
+    }
+}
+
+fn lower_str(s: str, i: i32, acc: str) -> str {
+    if i >= s.len() {
+        return acc
+    }
+    lower_str(s, i + 1, acc + lower_char(s[i]))
+}
+
+# Drop leading/trailing spaces.
+fn trim_left(s: str, i: i32) -> str {
+    if i >= s.len() {
+        return ""
+    }
+    if s[i] == ' ' || s[i] == '\t' {
+        trim_left(s, i + 1)
+    } else {
+        str_slice(s, i, s.len())
+    }
+}
+
+fn trim_right(s: str) -> str {
+    if s.len() == 0 {
+        return ""
+    }
+    let last = s.len() - 1
+    if s[last] == ' ' || s[last] == '\t' {
+        trim_right(str_slice(s, 0, last))
+    } else {
+        s
+    }
+}
+
+fn trim(s: str) -> str {
+    trim_right(trim_left(s, 0))
+}
+
+# Accept "month", "view month", "VIEW Month", etc.
+fn starts_with(s: str, prefix: str) -> i32 {
+    if s.len() < prefix.len() {
+        return 0
+    }
+    if str_slice(s, 0, prefix.len()) == prefix {
+        1
+    } else {
+        0
+    }
+}
+
+fn normalize_cmd(raw: str) -> str {
+    let s = trim(lower_str(raw, 0, ""))
+    if starts_with(s, "view ") == 1 {
+        trim(str_slice(s, 5, s.len()))
+    } else {
+        s
+    }
+}
+
 fn parse_int(s: str, i: i32, acc: i32) -> i32 {
     if i >= s.len() {
         return acc
@@ -156,6 +221,50 @@ fn day_name(w: i32) -> str {
     if w == 0 { "Sun" } else { if w == 1 { "Mon" } else { if w == 2 { "Tue" } else { if w == 3 { "Wed" } else { if w == 4 { "Thu" } else { if w == 5 { "Fri" } else { "Sat" } } } } } }
 }
 
+# 0=Sun .. 6=Sat, or -1 if not a weekday name
+fn weekday_num(s: str) -> i32 {
+    if s == "sunday" || s == "sun" { 0 } else {
+    if s == "monday" || s == "mon" { 1 } else {
+    if s == "tuesday" || s == "tue" || s == "tues" { 2 } else {
+    if s == "wednesday" || s == "wed" { 3 } else {
+    if s == "thursday" || s == "thu" || s == "thur" || s == "thurs" { 4 } else {
+    if s == "friday" || s == "fri" { 5 } else {
+    if s == "saturday" || s == "sat" { 6 } else { -1 }
+    } } } } } }
+}
+
+# 1..12, or -1 if not a month name
+fn month_num(s: str) -> i32 {
+    if s == "january" || s == "jan" { 1 } else {
+    if s == "february" || s == "feb" { 2 } else {
+    if s == "march" || s == "mar" { 3 } else {
+    if s == "april" || s == "apr" { 4 } else {
+    if s == "may" { 5 } else {
+    if s == "june" || s == "jun" { 6 } else {
+    if s == "july" || s == "jul" { 7 } else {
+    if s == "august" || s == "aug" { 8 } else {
+    if s == "september" || s == "sep" || s == "sept" { 9 } else {
+    if s == "october" || s == "oct" { 10 } else {
+    if s == "november" || s == "nov" { 11 } else {
+    if s == "december" || s == "dec" { 12 } else { -1 }
+    } } } } } } } } } } }
+}
+
+# Jump to that weekday in the same week as cur (Sun..Sat).
+fn goto_weekday(cur: i32, want: i32) -> i32 {
+    let w = dow(y_of(cur), m_of(cur), d_of(cur))
+    add_days(cur, want - w)
+}
+
+# Jump to the 1st of month m in cur's year (clamp day if needed).
+fn goto_month(cur: i32, m: i32) -> i32 {
+    let y = y_of(cur)
+    let d = d_of(cur)
+    let md = dim(y, m)
+    let day = if d > md { md } else { d }
+    ymd_of(y, m, day)
+}
+
 fn fmt_ymd(ymd: i32) -> str {
     y_of(ymd) + "-" + pad2(m_of(ymd)) + "-" + pad2(d_of(ymd))
 }
@@ -194,22 +303,96 @@ fn norm_date(y: i32, m: i32, d: i32) -> i32 {
 
 fn parse_ymd(s: str) -> i32 {
     # accepts YYYY-MM-DD or YYYYMMDD
-    if s.len() >= 10 && s[4] == '-' {
-        let y = parse_int(str_slice(s, 0, 4), 0, 0)
-        let m = parse_int(str_slice(s, 5, 7), 0, 0)
-        let d = parse_int(str_slice(s, 8, 10), 0, 0)
-        ymd_of(y, m, d)
+    if s.len() >= 10 {
+        if s[4] == '-' {
+            let y = parse_int(str_slice(s, 0, 4), 0, 0)
+            let m = parse_int(str_slice(s, 5, 7), 0, 0)
+            let d = parse_int(str_slice(s, 8, 10), 0, 0)
+            return ymd_of(y, m, d)
+        }
+    }
+    parse_int(s, 0, 0)
+}
+
+# M/D or M/D/YYYY (also MM/DD). Returns 0 if not that shape.
+fn parse_slash_date(s: str, year: i32) -> i32 {
+    let slash = find_char(s, '/', 0)
+    if slash < 0 {
+        return 0
+    }
+    let m = parse_int(str_slice(s, 0, slash), 0, 0)
+    let rest = str_slice(s, slash + 1, s.len())
+    let slash2 = find_char(rest, '/', 0)
+    if slash2 < 0 {
+        let d = parse_int(rest, 0, 0)
+        if m < 1 || m > 12 || d < 1 || d > dim(year, m) {
+            0
+        } else {
+            ymd_of(year, m, d)
+        }
     } else {
-        parse_int(s, 0, 0)
+        let d = parse_int(str_slice(rest, 0, slash2), 0, 0)
+        let y = parse_int(str_slice(rest, slash2 + 1, rest.len()), 0, 0)
+        if y < 1 || m < 1 || m > 12 || d < 1 || d > dim(y, m) {
+            0
+        } else {
+            ymd_of(y, m, d)
+        }
     }
 }
 
-fn parse_hmm(s: str) -> i32 {
-    if s.len() >= 5 && s[2] == ':' {
-        parse_int(str_slice(s, 0, 2), 0, 0) * 100 + parse_int(str_slice(s, 3, 5), 0, 0)
-    } else {
-        parse_int(s, 0, 0)
+# "september 21" / "sep 21" — day of that month in year. Returns 0 if not.
+fn parse_month_day_words(s: str, year: i32) -> i32 {
+    let sp = find_char(s, ' ', 0)
+    if sp < 0 {
+        return 0
     }
+    let name = str_slice(s, 0, sp)
+    let daypart = trim(str_slice(s, sp + 1, s.len()))
+    # no extra words after the day number
+    let sp2 = find_char(daypart, ' ', 0)
+    if sp2 >= 0 {
+        return 0
+    }
+    let m = month_num(name)
+    let d = parse_int(daypart, 0, 0)
+    if m < 1 || d < 1 || d > dim(year, m) {
+        0
+    } else {
+        ymd_of(year, m, d)
+    }
+}
+
+# Any supported date phrase. Uses cur's year when year omitted. 0 = fail.
+fn parse_any_date(s: str, cur: i32) -> i32 {
+    let t = trim(s)
+    if t.len() == 0 {
+        return 0
+    }
+    if t.len() >= 10 {
+        if t[4] == '-' {
+            return parse_ymd(t)
+        }
+    }
+    let y = y_of(cur)
+    let a = parse_slash_date(t, y)
+    if a != 0 {
+        return a
+    }
+    let b = parse_month_day_words(t, y)
+    if b != 0 {
+        return b
+    }
+    0
+}
+
+fn parse_hmm(s: str) -> i32 {
+    if s.len() >= 5 {
+        if s[2] == ':' {
+            return parse_int(str_slice(s, 0, 2), 0, 0) * 100 + parse_int(str_slice(s, 3, 5), 0, 0)
+        }
+    }
+    parse_int(s, 0, 0)
 }
 
 # ---- appointments ----
@@ -378,7 +561,10 @@ fn encode_a(xs: ApptList) -> str {
 }
 
 fn parse_a_line(s: str) -> Option<Appt> {
-    if s.len() == 0 || s[0] != 'A' {
+    if s.len() == 0 {
+        return None
+    }
+    if s[0] != 'A' {
         return None
     }
     Some(Ev {
@@ -484,7 +670,10 @@ fn encode_t(xs: TodoList) -> str {
 }
 
 fn parse_t_line(s: str) -> Option<Todo> {
-    if s.len() == 0 || s[0] != 'T' {
+    if s.len() == 0 {
+        return None
+    }
+    if s[0] != 'T' {
         return None
     }
     Some(Item {
@@ -573,7 +762,10 @@ fn encode_c(xs: ContactList) -> str {
 }
 
 fn parse_c_line(s: str) -> Option<Contact> {
-    if s.len() == 0 || s[0] != 'C' {
+    if s.len() == 0 {
+        return None
+    }
+    if s[0] != 'C' {
         return None
     }
     Some(Person {
@@ -654,7 +846,13 @@ fn print_dump(view: i32, cur: i32, ap: ApptList, td: TodoList) {
 
 fn help() {
     print("Perpetual Day Planner - commands:")
+    print("  (case does not matter; you may type 'view ' before a view command)")
     print("  VIEW:   day | week | month | prev | next | today | goto")
+    print("         examples:  month   OR   view month")
+    print("  JUMP:   monday .. sunday   (or mon, tue, ...)")
+    print("          january .. december  (or jan, feb, sep, ...)")
+    print("          september 21   |   9/21   |   2026-09-21")
+    print("          goto 9/21      |   view september 21")
     print("  APPTS:  sched | aadd | aupd | adel")
     print("  TASKS:  tasks | tadd | tdone | tdel")
     print("  BOOK:   contacts | cadd | cdel")
@@ -667,7 +865,7 @@ fn view_name(v: i32) -> str {
 
 fn repl(view: i32, cur: i32, ap: ApptList, td: TodoList, ct: ContactList) {
     print("--- " + view_name(view) + " | " + fmt_ymd(cur) + " ---")
-    let line = prompt("> ")
+    let line = normalize_cmd(prompt("> "))
     if line == "quit" || line == "q" {
         save_all(ap, td, ct)
         print("bye")
@@ -699,6 +897,22 @@ fn repl(view: i32, cur: i32, ap: ApptList, td: TodoList, ct: ContactList) {
         repl(view, t, ap, td, ct)
         return
     }
+    # weekday name -> that day this week, day view
+    let wd = weekday_num(line)
+    if wd >= 0 {
+        let n = goto_weekday(cur, wd)
+        show_schedule(0, n, ap)
+        repl(0, n, ap, td, ct)
+        return
+    }
+    # month name -> that month (same year), month view
+    let mn = month_num(line)
+    if mn >= 1 {
+        let n = goto_month(cur, mn)
+        show_schedule(2, n, ap)
+        repl(2, n, ap, td, ct)
+        return
+    }
     if line == "prev" {
         let step = if view == 2 { -30 } else { if view == 1 { -7 } else { -1 } }
         let n = add_days(cur, step)
@@ -713,11 +927,36 @@ fn repl(view: i32, cur: i32, ap: ApptList, td: TodoList, ct: ContactList) {
         repl(view, n, ap, td, ct)
         return
     }
+    # goto with date on same line: "goto 9/21"
+    if starts_with(line, "goto ") == 1 {
+        let arg = trim(str_slice(line, 5, line.len()))
+        let n = parse_any_date(arg, cur)
+        if n != 0 {
+            show_schedule(0, n, ap)
+            repl(0, n, ap, td, ct)
+            return
+        }
+        print("bad date - try 9/21 or september 21 or 2026-09-21")
+        repl(view, cur, ap, td, ct)
+        return
+    }
     if line == "goto" {
-        let s = prompt("date YYYY-MM-DD: ")
-        let n = parse_ymd(s)
-        show_schedule(view, n, ap)
-        repl(view, n, ap, td, ct)
+        let s = prompt("date (9/21 or YYYY-MM-DD or september 21): ")
+        let n = parse_any_date(normalize_cmd(s), cur)
+        if n != 0 {
+            show_schedule(0, n, ap)
+            repl(0, n, ap, td, ct)
+            return
+        }
+        print("bad date - try 9/21 or september 21 or 2026-09-21")
+        repl(view, cur, ap, td, ct)
+        return
+    }
+    # bare date: "september 21", "9/21", "2026-09-21"
+    let jump = parse_any_date(line, cur)
+    if jump != 0 {
+        show_schedule(0, jump, ap)
+        repl(0, jump, ap, td, ct)
         return
     }
     if line == "sched" {
