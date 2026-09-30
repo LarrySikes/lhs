@@ -1,0 +1,431 @@
+LHS PROGRAMMER'S MANUAL
+=======================
+Audience: people extending LHS programs, the compiler, or the runtime.
+Companion: docs/USER_MANUAL.txt (beginner / operator guide)
+Version:  v0.6 (2026)
+Repo:     https://github.com/LarrySikes/lhs
+
+Saved at: docs/PROGRAMMERS_MANUAL.txt
+
+
+0. HOW TO USE THIS MANUAL
+-------------------------
+- Language surface + semantics ........ sections 1–8
+- Toolchain & backends ................ sections 9–12
+- Memory, concurrency, interop ........ sections 13–15
+- Extending the compiler .............. sections 16–18
+- Spec sources & conventions .......... sections 19–20
+
+
+1. DESIGN SUMMARY
+-----------------
+LHS is brace-delimited, expression-oriented, statically typed, with local
+type inference. It is closer to Rust/Swift than to Python.
+
+Locked decisions (see docs/DECISIONS.md):
+
+  D1  Compiler in Rust
+  D2  MVP memory = RC / bump; no borrow checker in v1
+  D3  Brace syntax, significant types
+  D4  Structured task/await on OS threads; no shared mutable LHS state
+  D5  Three backends: embed (full), C subset, Cranelift JIT/AOT subset
+  D6  C ABI interop only in v1
+  D7  Human + JSON diagnostics (E* fail, W* warn)
+  D8  Name: LHS / .lhs / lhsc
+
+Examples under examples/ are the executable language spec. Prefer changing
+examples before changing the compiler when they disagree.
+
+
+2. LEXICAL STRUCTURE
+--------------------
+Comments:
+  # line comment
+  // also accepted as line comment in some paths — prefer #
+
+Strings:  "hello"   with escapes \\ \" \n \t \r
+Chars:    'A'       single Unicode scalar via lexer
+C strings: c"..."   for extern "C" / *const u8 shapes
+Numbers:  42        i32-ish integer literals
+          3.14      f64 float literals
+
+Keywords:
+  fn let if else return match type extern unsafe
+  task await as is const use
+
+Operators (binary):
+  + - * /
+  == != < <= > >=
+  && ||
+  |  (pipe; also used in patterns / ADT display)
+
+Unary:  await <expr>   and unary minus via 0 - x pattern internally
+
+Indexing:  s[i]   (strings → char)
+
+Calls:     f(a, b)
+Methods:   recv.method(args)   or   Type.method via `fn Type.name`
+Cast:      expr as Type
+Is:        expr is Pattern
+
+
+3. TYPES
+--------
+Primitives (named TypeRef):
+  i32   i64   int     (int aliases treated like i32 in places)
+  f64   float
+  str
+  char
+  bool                (from comparisons / conditions)
+
+Pointers (interop):
+  *const T
+  *mut T              (declared; rare in user MVP code)
+
+Algebraic data types (ADT):
+
+  type Shape {
+      Circle { r: f64 },
+      Rect { w: f64, h: f64 },
+  }
+
+Structs (product types with field access / methods):
+
+  type Point {
+      x: f64,
+      y: f64,
+  }
+
+Built-in ADT-like names used by the language:
+  Option:  Some(v) | None
+  Result:  Ok(v) | Err(e)
+
+Type checking: crates/np_hir
+Exhaustiveness warning: W0200 (non-exhaustive match)
+
+
+4. ITEMS (TOP LEVEL)
+--------------------
+Program = sequence of:
+
+  use <path>                 # module import (see §8)
+  type Name { ... }          # ADT or struct body
+  fn name(params) -> Ret { } # free function
+  fn Type.name(self, ...)    # method (receiver = Type)
+  extern "C" { fn ... }      # foreign declarations
+  # unsafe blocks exist in syntax; rare in MVP user code
+
+Entry point:
+
+  fn main() { ... }          # no parameters
+
+
+5. STATEMENTS AND EXPRESSIONS
+-----------------------------
+Statements:
+  let name[: Type] = expr
+  expr                       # expression statement
+  return expr
+  return                     # unit
+  { block }                  # nested block
+
+If is an expression:
+
+  if cond { then... } else { else... }
+
+Match:
+
+  match value {
+      Pattern => expr,
+      Pattern => { stmts },
+  }
+
+Patterns:
+  Ident                      # bind, or unit variant if Capitalized
+  Variant { field: pat, ... }
+  Variant(pat, ...)          # positional where supported
+  None / Some / Ok / Err
+
+Flow narrowing:
+
+  if x is None { ... } else { ... }
+  See examples/07_flow_narrow.lhs
+
+No while / for yet. Use recursion. Interpreter stack depth is limited
+(keep recursive depth in the low hundreds unless you deepen the runtime).
+
+
+6. OPERATORS AND COERCIONS
+--------------------------
+Integers: arithmetic and compares as i32/i64 Values in the interpreter.
+
+Floats: + - * / and compares among f64; mixed f64/i32 arithmetic and
+compares are supported in the interpreter (np_eval).
+
+Strings:
+  str + str
+  str + i32 / i32 + str
+  str + char / char + str     (interpreter)
+  str == str / str != str
+  s.len() → i32
+  s[i] → char
+
+Chars:
+  char compares; char != char
+  char - char → i32
+  as i32 / as char / as f64 / as str casts (interpreter cast_value)
+
+Conditions must be bool (truthy check rejects non-bool).
+
+
+7. CONCURRENCY
+--------------
+Syntax:
+
+  let h = task { <expr or block producing a value> }
+  let v = await h
+
+Semantics (v0.4+):
+  - Each task runs on an OS thread
+  - No shared mutable LHS state across tasks
+  - await joins once and yields the Value
+  - Tasks do NOT capture outer locals in the interpreter
+    → pass arguments into helpers, or use literals inside the task body
+
+See: examples/08_tasks.lhs, examples/15_parallel_busy.lhs, apps/busy_bench.lhs
+
+
+8. MODULES (`use`)
+------------------
+  use math
+  use io
+  use std.io          # loads stdlib/std/io.lhs
+  use "math"          # equivalent
+
+Search order:
+  1. $LHS_PATH  (colon-separated directories)
+  2. <repo>/stdlib/
+  3. directory of the source file
+  4. repo root
+
+Imported .lhs files are merged into one Program (flat namespace).
+Nested use inside modules is resolved recursively.
+
+List modules + builtins:
+
+  lhsc lib
+
+There is no remote registry yet (docs/PACKAGES.md).
+
+
+9. BUILTINS (RUNTIME)
+---------------------
+Always available (no use required):
+
+  print / eprint
+  read_file / write_file          → Result
+  read_line                       → Option
+  str_slice / find_char
+  abs / min / max / assert
+  getenv / argc / arg
+  exit / sleep_ms / now_ms
+  gc                              → RC free count (where wired)
+
+Stdlib modules (stdlib/*.lhs):
+  math   square, clamp, abs_i, ...
+  io     thin wrappers around print / files
+
+Canonical list: `lhsc lib` and docs/PACKAGES.md
+
+
+10. TOOLCHAIN MAP
+-----------------
+Binary: lhsc  (crate npc)
+
+Crates:
+
+  np_syntax   lexer, parser, AST, formatter
+  np_hir      typechecker, exhaustiveness
+  np_eval     tree-walk interpreter + tasks + builtin dispatch
+  np_codegen  embed native build + C subset emitter
+  lhs_mem     RC heap + bump scratch (C ABI: retain/release/gc)
+  lhs_rt      embed runtime: lhs_run_source
+  lhs_jit     Cranelift JIT + AOT object emission
+  npc         CLI front-end
+
+Pipeline (typical):
+
+  source → tokenize/parse (np_syntax)
+        → resolve use imports
+        → typecheck (np_hir)
+        → run (np_eval) OR jit (lhs_jit) OR build (embed/C/cranelift)
+
+
+11. BACKENDS (CHOOSE DELIBERATELY)
+---------------------------------
+| Goal                         | Command                              |
+|------------------------------|--------------------------------------|
+| Full language, easiest       | lhsc run file.lhs                    |
+| Faster feedback              | lhsc run --jit file.lhs              |
+| Hot reload while editing     | lhsc watch [--jit] file.lhs          |
+| Standalone full-language bin | lhsc build file.lhs -o out           |
+| Subset AOT via Cranelift     | lhsc build file.lhs -o out --emit=cranelift |
+| Subset via C                 | lhsc build file.lhs -o out --emit=c  |
+
+Default `build` embeds the (formatted) source and links liblhs_rt.a.
+That path supports the full language that the interpreter supports.
+
+Cranelift / C may reject programs outside their subsets (e.g. rich ADTs,
+methods). Error messages say so — fall back to default build.
+
+See docs/AGENT.md for agent-oriented command choice.
+
+
+12. DIAGNOSTICS
+---------------
+Human form on stderr.
+
+Machine form:
+
+  lhsc check --json file.lhs
+
+JSON fields (stable intent): file, span, code, message, help, warning
+
+Errors (E*) → non-zero exit from check/run when present
+Warnings (W*) → printed; check may still succeed
+  Example: W0200 non-exhaustive match
+
+Deliberate failing example: examples/10_bad_type.lhs
+
+
+13. MEMORY MODEL
+----------------
+Interpreter: Rust heap Values (enum).
+Embed build: same Value heap; lhs_rt resets lhs_mem per run where used.
+Cranelift JIT: lhs_mem RC cells/strings + bump scratch.
+Cranelift AOT stubs: malloc-RC compatible cells.
+
+User code has no raw pointers except via extern/"C" (and future unsafe).
+Parallel tasks do not share mutable Values across threads.
+
+Details: docs/MEMORY.md
+
+
+14. C INTEROP
+-------------
+Declare:
+
+  extern "C" {
+      fn puts(s: *const u8) -> i32
+  }
+
+Pass c"hello\0" style strings where the backend expects *const u8.
+Interpreter has limited stubs (e.g. puts). Cranelift path links real libc
+for supported decls.
+
+See examples/09_c_abi.lhs
+
+
+15. NATIVE BUILD INTERNALS (DEFAULT)
+------------------------------------
+np_codegen::build_native:
+  - formats / embeds program text
+  - builds/links liblhs_rt
+  - produces a host executable that calls into the embed runtime
+
+Rebuilding lhsc after runtime changes:
+
+  cargo build -p npc --bin lhsc
+
+For apps:
+
+  ./target/debug/lhsc build apps/mandelbrot.lhs -o mandelbrot
+
+
+16. EXTENDING THE LANGUAGE (COMPILER WORKFLOW)
+----------------------------------------------
+Rough order when adding a feature:
+
+  1. Add / extend an example under examples/ (spec first)
+  2. Lexer/parser tokens & AST in np_syntax if needed
+  3. Type rules in np_hir
+  4. Interpreter support in np_eval (always — full language path)
+  5. Optional: lhs_jit / np_codegen C emitter for the subset
+  6. docs: USER_MANUAL, this file, PACKAGES, DECISIONS if locked
+  7. cargo test --workspace && lhsc test examples
+
+Interpreter gaps that bite apps (already fixed once — do not regress):
+  - Char != Char
+  - Float compares and mixed f64/i32 div
+  - Cast to f64 / char / str
+  - Str + Char concatenation
+  - Short-circuit: && and || currently evaluate both sides in Binary;
+    nest `if` when indexing after a length check
+
+
+17. EXTENDING BUILTINS
+----------------------
+Interpreter dispatch: crates/np_eval/src/lib.rs (name == "..." arms)
+JIT hosts: crates/lhs_jit (symbol table + host_* functions)
+Embed/runtime: crates/lhs_rt + lhs_mem
+
+After adding a builtin:
+  - document in docs/PACKAGES.md
+  - expose via `lhsc lib` listing if applicable
+  - add examples/NN_*.lhs coverage
+
+
+18. EXTENDING STDLIB MODULES
+----------------------------
+Add stdlib/foo.lhs then `use foo`.
+Keep modules small; flat merge means name clashes are real.
+Nested: stdlib/std/io.lhs → `use std.io`
+
+
+19. REPOSITORY LAYOUT
+---------------------
+  apps/           sample applications (planner, mandelbrot, bench)
+  examples/       language spec + regression suite
+  stdlib/         use-able library modules
+  crates/         Rust toolchain
+  docs/           manuals, decisions, releases
+  site/           landing page + youtube pack
+  .github/        ci.yml, pages.yml
+
+Spec priority: examples/ > docs prose > ad-hoc chat claims.
+
+
+20. RELATED DOCUMENTS
+---------------------
+  docs/USER_MANUAL.txt     end-user / operator guide
+  docs/OVERVIEW.md         crate map + commands
+  docs/DECISIONS.md        locked design choices
+  docs/MEMORY.md           allocation by backend
+  docs/PACKAGES.md         imports + builtins table
+  docs/AGENT.md            automation / JSON / backends
+  docs/MANIFESTO.md        product north star
+  docs/STATUS.txt          shipped checklist
+  apps/README.md           how to run sample apps
+
+
+21. QUICK PROGRAMMER CHEAT SHEET
+--------------------------------
+Build toolchain:
+  cargo build -p npc --bin lhsc
+  cargo test --workspace
+  ./target/debug/lhsc test examples
+
+Run / ship:
+  ./target/debug/lhsc run [--jit] path.lhs
+  ./target/debug/lhsc build path.lhs -o out   # full language
+
+Inspect:
+  ./target/debug/lhsc check --json path.lhs
+  ./target/debug/lhsc lib
+
+Two-language demos:
+  ./target/debug/lhsc build apps/mandelbrot.lhs -o mandelbrot
+  ./target/debug/lhsc build apps/busy_bench.lhs -o busy_bench
+
+
+END OF PROGRAMMER'S MANUAL

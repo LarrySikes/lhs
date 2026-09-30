@@ -31,5 +31,6 @@ Rust-hosted toolchain (`lhsc`). Source files use the `.lhs` extension.
 
 ## Docs
 
-`docs/STATUS.txt`, `docs/PACKAGES.md`, `docs/MANIFESTO.md`, `docs/DECISIONS.md`,
+`docs/USER_MANUAL.txt`, `docs/PROGRAMMERS_MANUAL.txt`, `docs/STATUS.txt`,
+`docs/PACKAGES.md`, `docs/MANIFESTO.md`, `docs/DECISIONS.md`,
 `docs/MEMORY.md`, `docs/AGENT.md`, `docs/RELEASE_v0.5.md`

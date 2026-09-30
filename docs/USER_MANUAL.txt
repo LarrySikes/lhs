@@ -331,11 +331,13 @@ Problem: day planner says “unknown”
 
 14. WHERE TO READ MORE
 ----------------------
+  docs/PROGRAMMERS_MANUAL.txt  Language + compiler internals (for developers)
   docs/OVERVIEW.md     System map
   docs/STATUS.txt      What is done
   docs/PACKAGES.md     Modules and builtins
   docs/AGENT.md        Automation / JSON diagnostics
   docs/MANIFESTO.md    Goals
+  docs/DECISIONS.md    Locked design choices
   apps/README.md       Sample apps
   site/youtube/        YouTube script and task checklist
   README.md            Short project home
