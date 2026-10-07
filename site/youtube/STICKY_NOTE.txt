@@ -1,0 +1,14 @@
+LHS — sticky note links (copy from this file)
+============================================
+
+Landing page:
+https://larrysikes.github.io/lhs/
+
+GitHub repo:
+https://github.com/LarrySikes/lhs
+
+Project folder:
+/home/iwlnx/src/newproj
+
+YouTube title (exact):
+Introducing LHS — one language instead of two
