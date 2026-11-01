@@ -4,296 +4,159 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>LHS — one language, native speed</title>
-  <meta name="description" content="LHS is a small try at the two-language problem: write the program once, in one language, and still ship a real native program." />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet" />
+  <title>LHS — Rock Ridge Farm</title>
+  <meta name="description" content="LHS is a small try at the two-language problem: write the program once, and still ship a real native program." />
   <style>
-    :root {
-      --ink: #0a1628;
-      --mist: #e4ebf0;
-      --paper: #f7f5f1;
-      --accent: #c45c26;
-      --line: rgba(10, 22, 40, 0.12);
-      --mute: rgba(10, 22, 40, 0.62);
-      --code-bg: #122033;
-      --code-fg: #d7e2ec;
-      --code-hi: #7dd3a0;
-    }
-
     * { box-sizing: border-box; }
-    html { scroll-behavior: smooth; }
+    html, body { margin: 0; min-height: 100%; }
     body {
-      margin: 0;
-      color: var(--ink);
-      font-family: "Source Sans 3", sans-serif;
-      font-size: 1.125rem;
-      line-height: 1.55;
+      color: #f7f4ee;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      line-height: 1.5;
       background:
-        radial-gradient(1200px 600px at 80% -10%, rgba(196, 92, 38, 0.14), transparent 55%),
-        linear-gradient(165deg, #dfe8ef 0%, var(--paper) 42%, #eef1f4 100%);
-      min-height: 100vh;
+        linear-gradient(to top, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0.12) 42%, rgba(0, 0, 0, 0.25) 100%),
+        url("webpg.jpg") center center / cover no-repeat fixed;
     }
-
-    /* subtle blueprint grid */
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      background-image:
-        linear-gradient(var(--line) 1px, transparent 1px),
-        linear-gradient(90deg, var(--line) 1px, transparent 1px);
-      background-size: 48px 48px;
-      mask-image: linear-gradient(to bottom, rgba(0,0,0,0.35), transparent 70%);
-      z-index: 0;
-    }
-
-    .wrap {
-      position: relative;
-      z-index: 1;
-      width: min(1100px, calc(100% - 2.5rem));
-      margin: 0 auto;
-    }
-
-    /* —— HERO: one composition —— */
-    .hero {
-      min-height: 100vh;
-      display: grid;
-      align-items: center;
-      padding: 2.5rem 0 3rem;
-    }
-
-    .hero-grid {
-      display: grid;
-      grid-template-columns: 1.05fr 0.95fr;
-      gap: 3rem;
-      align-items: center;
-    }
-
-    @media (max-width: 860px) {
-      .hero-grid { grid-template-columns: 1fr; gap: 2rem; }
-      .visual { min-height: 280px; order: -1; }
-    }
-
-    .brand {
-      font-family: "Fraunces", serif;
-      font-weight: 700;
-      font-size: clamp(3.5rem, 9vw, 6.5rem);
-      line-height: 0.92;
-      letter-spacing: -0.03em;
-      margin: 0 0 1.25rem;
-    }
-
-    .brand span {
-      color: var(--accent);
-    }
-
-    h1 {
-      font-family: "Fraunces", serif;
-      font-weight: 500;
-      font-size: clamp(1.55rem, 3.2vw, 2.15rem);
-      line-height: 1.2;
-      margin: 0 0 0.85rem;
-      max-width: 22ch;
-    }
-
-    .lede {
-      margin: 0 0 1.75rem;
-      max-width: 38rem;
-      color: var(--mute);
-      font-size: 1.15rem;
-    }
-
-    .cta {
+    a { color: #e6c15a; }
+    .tabs {
       display: flex;
-      flex-wrap: wrap;
-      gap: 0.75rem 1rem;
-      align-items: center;
+      width: 100%;
+      background: rgba(0, 0, 0, 0.45);
     }
-
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0.85rem 1.35rem;
-      font-family: "Source Sans 3", sans-serif;
-      font-weight: 600;
-      font-size: 1rem;
+    .tabs a {
+      flex: 1 1 0;
+      text-align: center;
+      color: #f7f4ee;
       text-decoration: none;
-      border: 2px solid var(--ink);
-      color: var(--paper);
-      background: var(--ink);
-      transition: transform 180ms ease, background 180ms ease, color 180ms ease;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-size: clamp(11px, 1.5vw, 14px);
+      padding: 16px 8px;
     }
-
-    .btn:hover { transform: translateY(-2px); background: var(--accent); border-color: var(--accent); }
-
-    .btn-ghost {
-      background: transparent;
-      color: var(--ink);
+    .tabs a.here {
+      color: #e6c15a;
+      box-shadow: inset 0 -3px 0 #e6c15a;
     }
-
-    .btn-ghost:hover {
-      background: var(--ink);
-      color: var(--paper);
-      border-color: var(--ink);
+    main {
+      max-width: 900px;
+      margin: 28px auto 48px;
+      padding: 28px 22px 36px;
+      background: rgba(12, 10, 8, 0.82);
+      border-radius: 18px;
     }
-
-    /* dominant visual: edge-to-edge code plane inside hero column */
-    .visual {
-      position: relative;
-      min-height: 420px;
-      border: 2px solid var(--ink);
-      background: var(--code-bg);
-      color: var(--code-fg);
-      overflow: hidden;
-      box-shadow: 12px 12px 0 rgba(10, 22, 40, 0.18);
-      animation: rise 900ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-    }
-
-    @keyframes rise {
-      from { opacity: 0; transform: translateY(18px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    .visual pre {
+    .kicker {
       margin: 0;
-      padding: 1.5rem 1.35rem 2rem;
-      font-family: "IBM Plex Mono", monospace;
-      font-size: clamp(0.78rem, 1.6vw, 0.92rem);
-      line-height: 1.55;
-      white-space: pre;
-      overflow: hidden;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      font-size: 13px;
+      color: #e6c15a;
     }
-
-    .visual .hi { color: var(--code-hi); }
-    .visual .cm { color: rgba(215, 226, 236, 0.45); }
-    .visual .kw { color: #f0a06a; }
-
-    .scan {
-      position: absolute;
-      left: 0; right: 0;
-      height: 2px;
-      background: linear-gradient(90deg, transparent, var(--accent), transparent);
-      animation: scan 4.5s ease-in-out infinite;
-      opacity: 0.7;
+    h1 {
+      margin: 6px 0 8px;
+      font-weight: 500;
+      font-size: clamp(40px, 6vw, 64px);
+      letter-spacing: -0.03em;
     }
-
-    @keyframes scan {
-      0% { top: 8%; }
-      50% { top: 88%; }
-      100% { top: 8%; }
+    h2 {
+      margin: 28px 0 8px;
+      font-size: 24px;
+      font-weight: 600;
     }
-
-    .copy-in {
-      animation: rise 800ms 120ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    .lead {
+      margin: 0 0 8px;
+      max-width: 40rem;
+      font-size: 20px;
+      color: #c9c2b4;
     }
-
-    /* —— one-job sections —— */
-    section {
-      padding: 4.5rem 0;
-      border-top: 1px solid var(--line);
-    }
-
-    section h2 {
-      font-family: "Fraunces", serif;
+    p { margin: 10px 0 0; }
+    ul { padding-left: 20px; }
+    li { margin: 6px 0; }
+    .note { color: #c9c2b4; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+    .btn {
+      display: inline-block;
+      background: #e6c15a;
+      color: #1a1406;
+      text-decoration: none;
       font-weight: 700;
-      font-size: clamp(1.75rem, 3vw, 2.35rem);
-      margin: 0 0 0.75rem;
-      letter-spacing: -0.02em;
+      border-radius: 999px;
+      padding: 12px 18px;
     }
-
-    section p {
-      margin: 0;
-      max-width: 42rem;
-      color: var(--mute);
+    .btn.quiet {
+      background: transparent;
+      color: #e6c15a;
+      border: 1px solid rgba(230, 193, 90, 0.7);
     }
-
-    .cmd {
-      margin-top: 1.5rem;
-      padding: 1.1rem 1.25rem;
-      font-family: "IBM Plex Mono", monospace;
-      font-size: 0.95rem;
-      background: var(--ink);
-      color: var(--paper);
-      border-left: 4px solid var(--accent);
+    img {
+      width: 100%;
+      height: auto;
+      margin-top: 16px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: #111;
+    }
+    pre {
+      margin: 14px 0 0;
+      padding: 16px 18px;
       overflow-x: auto;
+      border-radius: 12px;
+      background: #111820;
+      color: #e7eef6;
+      border-left: 4px solid #e6c15a;
+      font-family: ui-monospace, "Cascadia Code", monospace;
+      font-size: 14px;
+      line-height: 1.55;
     }
-
-    footer {
-      padding: 2.5rem 0 3.5rem;
-      border-top: 1px solid var(--line);
-      font-size: 0.95rem;
-      color: var(--mute);
-    }
-
-    footer a { color: var(--ink); }
+    code { font-family: ui-monospace, "Cascadia Code", monospace; }
   </style>
 </head>
 <body>
+  <nav class="tabs">
+    <a href="http://rockridgefarm.com/index.html">Rock Ridge Farm</a>
+    <a href="http://rockridgefarm.com/software.html" class="here">Software</a>
+    <a href="http://rockridgefarm.com/chinese-equipment.html">Chinese Equipment</a>
+    <a href="http://rockridgefarm.com/farming.html">Farming</a>
+  </nav>
   <main>
-    <header class="hero wrap">
-      <div class="hero-grid">
-        <div class="copy-in">
-          <p class="brand">LH<span>S</span></p>
-          <h1>One language, not two.</h1>
-          <p class="lede">
-            This is the two-language problem. You write the program in an easy
-            language, then write it again in a fast one. LHS is a small try at
-            one language for both: easy to write, and it builds a real program.
-          </p>
-          <div class="cta">
-            <a class="btn" href="#try">Try it</a>
-            <a class="btn btn-ghost" href="https://github.com/LarrySikes/lhs">Source</a>
-          </div>
-        </div>
-        <div class="visual" aria-hidden="true">
-          <div class="scan"></div>
-          <pre><span class="cm"># day planner · .lhs</span>
-<span class="kw">use</span> math
+    <p class="kicker">One language</p>
+    <h1>LHS</h1>
+    <p class="lead">Write the program once. Keep it easy to read. Still ship a real native program.</p>
+    <p>That is the two-language problem: an easy language for the first draft, then the same program again in a fast one. LHS is a small try at doing both in one file.</p>
 
-<span class="kw">fn</span> <span class="hi">main</span>() {
-    <span class="kw">let</span> a = <span class="kw">task</span> { square(6) }
-    <span class="kw">let</span> b = <span class="kw">task</span> { clamp(10, 0, 5) }
-    print(<span class="kw">await</span> a)
-    print(<span class="kw">await</span> b)
+    <div class="actions">
+      <a class="btn" href="https://github.com/LarrySikes/lhs">Source on GitHub</a>
+      <a class="btn quiet" href="https://github.com/LarrySikes/lhs/blob/main/docs/USER_MANUAL.txt">User manual</a>
+    </div>
+
+    <h2>What it does today</h2>
+    <ul>
+      <li>Sources are <code>.lhs</code> files. The compiler is <code>lhsc</code>.</li>
+      <li>Check, run, watch, test, and build a standalone program.</li>
+      <li>Tasks you can wait on, structs and methods, and file I/O.</li>
+      <li>A small standard library, including math, JSON, HTTP, and SQLite.</li>
+    </ul>
+    <p class="note">It is an early version you can read and run. It does not replace Python, C, or Rust.</p>
+
+    <h2>A short program</h2>
+    <pre>use math
+
+fn main() {
+    let a = task { square(6) }
+    let b = task { clamp(10, 0, 5) }
+    print(await a)
+    print(await b)
 }</pre>
-        </div>
-      </div>
-    </header>
 
-    <section class="wrap" id="why">
-      <h2>The two-language problem</h2>
-      <p>
-        Python is easy to write. C or Rust is fast to run. Teams keep both,
-        and they rewrite the same program. That rewrite is the two-language
-        problem. Julia and Nim already work on it at a much larger scale.
-        LHS is smaller. It is an early version you can read and run. It does
-        not replace those languages. What it does today is a clear path:
-        write one <code>.lhs</code> file, and <code>lhsc build</code> makes
-        a standalone program.
-      </p>
-    </section>
-
-    <section class="wrap" id="try">
-      <h2>Run it on your machine</h2>
-      <p>
-        Clone the repo, then check and run an example. Sources use the
-        <code>.lhs</code> extension; the compiler is <code>lhsc</code>.
-      </p>
-      <pre class="cmd">cargo run -p npc --bin lhsc -- test examples
+    <h2>On your machine</h2>
+    <p>Clone the repo, then check the examples and run one.</p>
+    <pre>cargo run -p npc --bin lhsc -- test examples
 cargo run -p npc --bin lhsc -- run --jit examples/17_use_math.lhs</pre>
-    </section>
-  </main>
 
-  <footer class="wrap">
-    <p>
-      LHS · MIT OR Apache-2.0 ·
-      Docs live in the repo under <code>docs/</code>.
-      This page is static HTML in <code>site/</code> — host it anywhere below.
-    </p>
-  </footer>
+    <h2>Drawn by LHS</h2>
+    <p>The Mandelbrot picture below was drawn by an LHS program.</p>
+    <img src="example-lhs.png" alt="Mandelbrot set drawn by an LHS program" />
+
+    <p class="note" style="margin-top:22px">Have an idea for the language? <a href="http://rockridgefarm.com/suggest.php?program=LHS">Suggest an improvement</a>.</p>
+  </main>
 </body>
 </html>
