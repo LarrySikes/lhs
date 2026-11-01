@@ -317,6 +317,53 @@ impl<'a> Checker<'a> {
         self.fns.insert("sleep_ms".into(), (vec![Ty::I32], Ty::Unit));
         self.fns.insert("now_ms".into(), (vec![], Ty::I64));
         self.fns.insert("eprint".into(), (vec![Ty::Unknown], Ty::Unit));
+        self.fns.insert(
+            "http_get".into(),
+            (
+                vec![Ty::Str],
+                Ty::Result(Box::new(Ty::Str), Box::new(Ty::Str)),
+            ),
+        );
+        self.fns.insert(
+            "http_post".into(),
+            (
+                vec![Ty::Str, Ty::Str],
+                Ty::Result(Box::new(Ty::Str), Box::new(Ty::Str)),
+            ),
+        );
+        self.fns.insert(
+            "http_request".into(),
+            (
+                vec![Ty::Str, Ty::Str, Ty::Str, Ty::Str],
+                Ty::Result(Box::new(Ty::Str), Box::new(Ty::Str)),
+            ),
+        );
+        self.fns.insert(
+            "json_get".into(),
+            (vec![Ty::Str, Ty::Str], Ty::Option(Box::new(Ty::Str))),
+        );
+        self.fns.insert(
+            "re_find".into(),
+            (vec![Ty::Str, Ty::Str], Ty::Option(Box::new(Ty::Str))),
+        );
+        self.fns.insert(
+            "re_replace".into(),
+            (vec![Ty::Str, Ty::Str, Ty::Str], Ty::Str),
+        );
+        self.fns.insert(
+            "db_exec".into(),
+            (
+                vec![Ty::Str, Ty::Str],
+                Ty::Result(Box::new(Ty::Str), Box::new(Ty::Str)),
+            ),
+        );
+        self.fns.insert(
+            "db_query".into(),
+            (
+                vec![Ty::Str, Ty::Str],
+                Ty::Result(Box::new(Ty::Str), Box::new(Ty::Str)),
+            ),
+        );
         self.fns.insert("gc".into(), (vec![], Ty::I64));
     }
 
@@ -757,6 +804,9 @@ impl<'a> Checker<'a> {
                 || name == "getenv" || name == "argc" || name == "arg"
                 || name == "exit" || name == "sleep_ms" || name == "now_ms"
                 || name == "eprint" || name == "gc"
+                || name == "http_get" || name == "http_post" || name == "http_request"
+                || name == "json_get" || name == "re_find" || name == "re_replace"
+                || name == "db_exec" || name == "db_query"
             {
                 if let Some((params, ret)) = self.fns.get(name).cloned() {
                     for (i, a) in args.iter().enumerate() {

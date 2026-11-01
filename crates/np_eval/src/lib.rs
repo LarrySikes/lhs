@@ -501,6 +501,107 @@ impl<'a, W: Write> Interpreter<'a, W> {
                 let n = unsafe { lhs_mem::lhs_gc() };
                 return Ok(Value::Int(n as i64));
             }
+            if name == "http_get" {
+                let url = match arg_vals.first() {
+                    Some(Value::Str(s)) => s.clone(),
+                    _ => return Err(err("http_get expects str url")),
+                };
+                return Ok(http_request_value("GET", &url, "", ""));
+            }
+            if name == "http_post" {
+                let url = match arg_vals.first() {
+                    Some(Value::Str(s)) => s.clone(),
+                    _ => return Err(err("http_post expects str url")),
+                };
+                let body = match arg_vals.get(1) {
+                    Some(Value::Str(s)) => s.clone(),
+                    _ => return Err(err("http_post expects str body")),
+                };
+                return Ok(http_request_value(
+                    "POST",
+                    &url,
+                    "Content-Type: application/json",
+                    &body,
+                ));
+            }
+            if name == "http_request" {
+                let method = match arg_vals.first() {
+                    Some(Value::Str(s)) => s.clone(),
+                    _ => return Err(err("http_request expects str method")),
+                };
+                let url = match arg_vals.get(1) {
+                    Some(Value::Str(s)) => s.clone(),
+                    _ => return Err(err("http_request expects str url")),
+                };
+                let headers = match arg_vals.get(2) {
+                    Some(Value::Str(s)) => s.clone(),
+                    _ => return Err(err("http_request expects str headers")),
+                };
+                let body = match arg_vals.get(3) {
+                    Some(Value::Str(s)) => s.clone(),
+                    _ => return Err(err("http_request expects str body")),
+                };
+                return Ok(http_request_value(&method, &url, &headers, &body));
+            }
+            if name == "json_get" {
+                let doc = match arg_vals.first() {
+                    Some(Value::Str(s)) => s.clone(),
+                    _ => return Err(err("json_get expects str document")),
+                };
+                let path = match arg_vals.get(1) {
+                    Some(Value::Str(s)) => s.clone(),
+                    _ => return Err(err("json_get expects str path")),
+                };
+                return Ok(json_get_value(&doc, &path));
+            }
+            if name == "re_find" {
+                let text = match arg_vals.first() {
+                    Some(Value::Str(s)) => s.clone(),
+                    _ => return Err(err("re_find expects str text")),
+                };
+                let pattern = match arg_vals.get(1) {
+                    Some(Value::Str(s)) => s.clone(),
+                    _ => return Err(err("re_find expects str pattern")),
+                };
+                return Ok(re_find_value(&text, &pattern));
+            }
+            if name == "re_replace" {
+                let text = match arg_vals.first() {
+                    Some(Value::Str(s)) => s.clone(),
+                    _ => return Err(err("re_replace expects str text")),
+                };
+                let pattern = match arg_vals.get(1) {
+                    Some(Value::Str(s)) => s.clone(),
+                    _ => return Err(err("re_replace expects str pattern")),
+                };
+                let rep = match arg_vals.get(2) {
+                    Some(Value::Str(s)) => s.clone(),
+                    _ => return Err(err("re_replace expects str replacement")),
+                };
+                return Ok(re_replace_value(&text, &pattern, &rep));
+            }
+            if name == "db_exec" {
+                let path = match arg_vals.first() {
+                    Some(Value::Str(s)) => s.clone(),
+                    _ => return Err(err("db_exec expects str db path")),
+                };
+                let sql = match arg_vals.get(1) {
+                    Some(Value::Str(s)) => s.clone(),
+                    _ => return Err(err("db_exec expects str sql")),
+                };
+                return Ok(db_exec_value(&path, &sql));
+            }
+            if name == "db_query" {
+                let path = match arg_vals.first() {
+                    Some(Value::Str(s)) => s.clone(),
+                    _ => return Err(err("db_query expects str db path")),
+                };
+                let sql = match arg_vals.get(1) {
+                    Some(Value::Str(s)) => s.clone(),
+                    _ => return Err(err("db_query expects str sql")),
+                };
+                return Ok(db_query_value(&path, &sql));
+            }
             if name == "abs" {
                 return match arg_vals.first() {
                     Some(Value::Int(n)) => Ok(Value::Int(n.abs())),
@@ -793,6 +894,180 @@ fn match_pat(v: &Value, pat: &Pat, binds: &mut HashMap<String, Value>) -> bool {
             _ => false,
         },
     }
+}
+
+fn ok_str(s: String) -> Value {
+    Value::Variant {
+        name: "Ok".into(),
+        fields: HashMap::new(),
+        positional: vec![Value::Str(s)],
+    }
+}
+
+fn err_str(s: String) -> Value {
+    Value::Variant {
+        name: "Err".into(),
+        fields: HashMap::new(),
+        positional: vec![Value::Str(s)],
+    }
+}
+
+fn some_str(s: String) -> Value {
+    Value::Variant {
+        name: "Some".into(),
+        fields: HashMap::new(),
+        positional: vec![Value::Str(s)],
+    }
+}
+
+fn none_val() -> Value {
+    Value::Variant {
+        name: "None".into(),
+        fields: HashMap::new(),
+        positional: Vec::new(),
+    }
+}
+
+/// HTTP via curl. `headers` is newline-separated `Name: value` lines (may be empty).
+/// `body` may be empty for GET. Returns Ok(body) or Err(message).
+fn http_request_value(method: &str, url: &str, headers: &str, body: &str) -> Value {
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return err_str("http: url must start with http:// or https://".into());
+    }
+    let method = method.trim().to_uppercase();
+    if method.is_empty() {
+        return err_str("http: method is empty".into());
+    }
+    let mut cmd = std::process::Command::new("curl");
+    cmd.args(["-fsSL", "--max-time", "30", "-X", &method, url]);
+    for line in headers.lines() {
+        let h = line.trim();
+        if !h.is_empty() {
+            cmd.args(["-H", h]);
+        }
+    }
+    if !body.is_empty() {
+        cmd.args(["--data-binary", body]);
+    }
+    match cmd.output() {
+        Ok(out) if out.status.success() => match String::from_utf8(out.stdout) {
+            Ok(s) => ok_str(s),
+            Err(_) => err_str("http: response was not UTF-8".into()),
+        },
+        Ok(out) => {
+            let err = String::from_utf8_lossy(&out.stderr);
+            let msg = if err.trim().is_empty() {
+                format!("http: curl failed ({})", out.status)
+            } else {
+                format!("http: {}", err.trim())
+            };
+            err_str(msg)
+        }
+        Err(e) => err_str(format!("http: cannot run curl ({e})")),
+    }
+}
+
+fn re_find_value(text: &str, pattern: &str) -> Value {
+    match regex::Regex::new(pattern) {
+        Ok(re) => match re.find(text) {
+            Some(m) => some_str(m.as_str().to_string()),
+            None => none_val(),
+        },
+        Err(_) => none_val(),
+    }
+}
+
+fn re_replace_value(text: &str, pattern: &str, rep: &str) -> Value {
+    match regex::Regex::new(pattern) {
+        Ok(re) => Value::Str(re.replace_all(text, rep).into_owned()),
+        Err(_) => Value::Str(text.to_string()),
+    }
+}
+
+/// Run SQL that does not need a result set (CREATE/INSERT/UPDATE…). Needs `sqlite3` on PATH.
+fn db_exec_value(path: &str, sql: &str) -> Value {
+    match std::process::Command::new("sqlite3")
+        .args([path, sql])
+        .output()
+    {
+        Ok(out) if out.status.success() => ok_str(String::from_utf8_lossy(&out.stdout).into_owned()),
+        Ok(out) => {
+            let err = String::from_utf8_lossy(&out.stderr);
+            err_str(if err.trim().is_empty() {
+                format!("db_exec failed ({})", out.status)
+            } else {
+                format!("db_exec: {}", err.trim())
+            })
+        }
+        Err(e) => err_str(format!("db_exec: cannot run sqlite3 ({e})")),
+    }
+}
+
+/// Run a SELECT; returns JSON array text (`sqlite3 -json`). Use with json_get.
+fn db_query_value(path: &str, sql: &str) -> Value {
+    match std::process::Command::new("sqlite3")
+        .args(["-json", path, sql])
+        .output()
+    {
+        Ok(out) if out.status.success() => match String::from_utf8(out.stdout) {
+            Ok(s) => ok_str(s),
+            Err(_) => err_str("db_query: output was not UTF-8".into()),
+        },
+        Ok(out) => {
+            let err = String::from_utf8_lossy(&out.stderr);
+            err_str(if err.trim().is_empty() {
+                format!("db_query failed ({})", out.status)
+            } else {
+                format!("db_query: {}", err.trim())
+            })
+        }
+        Err(e) => err_str(format!("db_query: cannot run sqlite3 ({e})")),
+    }
+}
+
+fn json_value_to_str(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::Null => "null".into(),
+        serde_json::Value::Bool(b) => b.to_string(),
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::String(s) => s.clone(),
+        other => other.to_string(),
+    }
+}
+
+/// Walk a dotted JSON path (`main.temp`, `weather.0.description`).
+fn json_get_value(doc: &str, path: &str) -> Value {
+    let root: serde_json::Value = match serde_json::from_str(doc) {
+        Ok(v) => v,
+        Err(_) => return none_val(),
+    };
+    let mut cur = &root;
+    if path.is_empty() {
+        return some_str(json_value_to_str(cur));
+    }
+    for part in path.split('.') {
+        if part.is_empty() {
+            return none_val();
+        }
+        if let Ok(idx) = part.parse::<usize>() {
+            match cur {
+                serde_json::Value::Array(arr) => match arr.get(idx) {
+                    Some(next) => cur = next,
+                    None => return none_val(),
+                },
+                _ => return none_val(),
+            }
+        } else {
+            match cur {
+                serde_json::Value::Object(map) => match map.get(part) {
+                    Some(next) => cur = next,
+                    None => return none_val(),
+                },
+                _ => return none_val(),
+            }
+        }
+    }
+    some_str(json_value_to_str(cur))
 }
 
 pub fn run_program(program: &Program, out: impl Write) -> Result<Value> {

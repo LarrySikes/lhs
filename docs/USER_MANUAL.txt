@@ -209,7 +209,26 @@ If those fail with “outside subset” / “no ADT”, use the default build
   Time: now_ms()
   Sleep: sleep_ms(n)
 
-See examples/11_file_io.lhs
+  HTTP (needs curl on PATH):
+    http_get(url) -> Result
+    http_post(url, body) -> Result
+    http_request(method, url, headers, body) -> Result
+
+  JSON field (dotted path, arrays use 0,1,2…):
+    json_get(doc, "main.temp") -> Option
+
+  Regex:
+    re_find(text, pattern) -> Option
+    re_replace(text, pattern, replacement) -> str
+
+  SQLite (needs sqlite3 on PATH):
+    db_exec(path, sql) -> Result
+    db_query(path, sql) -> Result   # JSON array; use json_get
+
+  See examples/11_file_io.lhs, 20_json_get.lhs, 21_http_regex.lhs, 22_sqlite.lhs
+  Python demo: apps/weather.lhs
+  Python scan: lhsc py-check <dir>
+  Guide: docs/PYTHON.md
 
 
 9. MODULES (use)

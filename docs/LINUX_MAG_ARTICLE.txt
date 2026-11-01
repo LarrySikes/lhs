@@ -1,0 +1,320 @@
+LHS: One Language from Prototype to Binary
+==========================================
+Suggested for: Linux Magazine / Linux Magazine USA
+Author: Larry Sikes
+Project: LHS (sources end in .lhs; compiler is lhsc)
+Site:   https://larrysikes.github.io/lhs/
+Repo:   https://github.com/LarrySikes/lhs
+License: MIT OR Apache-2.0
+
+
+--------------------------------------------------------------------
+TWO-PARAGRAPH INTRO (lede)
+--------------------------------------------------------------------
+
+For years, Linux developers have lived with a quiet tax: write the
+idea in a pleasant language, then rewrite it in C, C++, or Rust when
+it must ship as a real binary. That split is the two-language
+problem. It costs time, invites bugs at the language boundary, and
+splits the toolchain. Julia and Nim already attack the problem at
+scale. LHS is a smaller, honest attempt: one language that stays
+readable day to day and can still become a standalone Linux program.
+
+LHS source files end in .lhs. The compiler is lhsc, built with Rust’s
+Cargo. You can check types, run with an interpreter or a Cranelift
+JIT, watch a file and re-run on save, or build a native executable
+you copy and run without Cargo. This article walks through install,
+a first program, language basics, and a Mandelbrot demo that ships
+as a normal binary from the same source you just ran.
+
+
+--------------------------------------------------------------------
+COMPLETE ARTICLE
+--------------------------------------------------------------------
+
+
+LHS: One Language from Prototype to Binary
+------------------------------------------
+
+
+The problem Linux programmers still pay for
+-------------------------------------------
+Python is easy to write. C and Rust are what many teams trust when a
+program must leave the laptop. Between those poles sits a familiar
+workflow: sketch the algorithm in a high-level language, then rewrite
+it for production. The rewrite is not free. Interfaces diverge.
+Tests must be rebuilt. The “second language” becomes the long-term
+home of the project, while the first language becomes a discarded
+draft.
+
+That pattern is the two-language problem. Large projects such as
+Julia and Nim already offer serious answers. LHS does not claim to
+replace them. It is an early, open-source MVP aimed at a clear path:
+one .lhs file, one toolchain, and a standalone Linux binary when you
+are ready to ship.
+
+
+What LHS is
+-----------
+LHS is a small, statically typed language. Programs live in text
+files with the .lhs extension. The compiler frontend and tools are
+hosted in Rust; you build lhsc once with Cargo, then use it for the
+rest of your work.
+
+What you get today:
+
+  • lhsc check          — parse and typecheck (optional JSON for tools)
+  • lhsc run            — full-language interpreter
+  • lhsc run --jit      — Cranelift JIT for many programs
+  • lhsc watch [--jit]  — re-run when the source changes
+  • lhsc build -o NAME  — standalone native executable
+  • lhsc fmt / test / lib
+
+Default lhsc build embeds the program and links a small runtime. That
+path covers the full language. Optional emitters (--emit=c and
+--emit=cranelift) exist for subsets; if they reject a program, use
+the default build.
+
+LHS includes Option and Result (no null), algebraic data types with
+match, structs and methods, file I/O, modules via use, and structured
+parallel tasks with task / await. There is no while or for yet;
+iteration uses recursion with a modest depth limit. The project is
+developed on Linux and licensed MIT OR Apache-2.0.
+
+
+Install and build the compiler
+------------------------------
+You need a Linux machine and Rust with Cargo (https://rustup.rs).
+
+  cargo --version
+
+Clone the repository, then build lhsc:
+
+  git clone https://github.com/LarrySikes/lhs.git
+  cd lhs
+  cargo build -p npc --bin lhsc
+
+The binary appears at:
+
+  ./target/debug/lhsc
+
+You may also invoke it through Cargo:
+
+  cargo run -p npc --bin lhsc -- <command...>
+
+Either form is fine. The rest of this article uses ./target/debug/lhsc
+after a successful build.
+
+
+Hello, LHS
+----------
+Create hello.lhs:
+
+  fn main() {
+      print("hello, LHS")
+  }
+
+Run it:
+
+  ./target/debug/lhsc run hello.lhs
+
+You should see:
+
+  hello, LHS
+
+Or run a shipped example:
+
+  ./target/debug/lhsc run examples/01_hello.lhs
+
+Check types without running:
+
+  ./target/debug/lhsc check hello.lhs
+
+Format:
+
+  ./target/debug/lhsc fmt --write hello.lhs
+
+
+Run versus build
+----------------
+This distinction matters for demos and for shipping.
+
+  RUN   — needs lhsc (or cargo) each time.
+  BUILD — produces a normal program you can run by itself.
+
+Build a standalone binary:
+
+  ./target/debug/lhsc build apps/mandelbrot.lhs -o mandelbrot
+  ./mandelbrot
+
+After that, Cargo and lhsc are not required to run ./mandelbrot. That
+is the heart of the pitch: the same source you developed under lhsc
+run becomes a Linux executable with lhsc build.
+
+
+Language basics
+---------------
+Every program needs a main:
+
+  fn main() {
+      ...
+  }
+
+Variables and types:
+
+  let n: i32 = 42
+  let name = "world"
+  let x: f64 = 3.5
+
+Print accepts strings and values; string concatenation uses +:
+
+  print("n=" + n)
+
+Conditionals use if / else (no else-if sugar yet; nest instead):
+
+  if n > 0 {
+      print("positive")
+  } else {
+      print("not positive")
+  }
+
+Functions declare parameter and return types:
+
+  fn double(n: i32) -> i32 {
+      n * 2
+  }
+
+Common types include i32, f64, str, char, and bool. Option and Result
+replace null. Algebraic data types and match appear in
+examples/05_adt.lhs; structs and methods in examples/06_struct_method.lhs.
+
+Parallel work uses tasks:
+
+  let a = task { double(3) }
+  let b = task { double(4) }
+  print(await a + await b)
+
+Tasks do not share mutable state, and they do not capture outer
+locals. Pass arguments into helpers instead. See examples/08_tasks.lhs
+and apps/busy_bench.lhs.
+
+Modules:
+
+  use math
+
+Libraries live under stdlib/ as name.lhs. Search order is LHS_PATH,
+then stdlib/, then the source folder. List builtins and modules with:
+
+  ./target/debug/lhsc lib
+
+
+A numeric walkthrough: Mandelbrot to binary
+-------------------------------------------
+People often prototype float-heavy code in a scripting language and
+later rewrite it in C. The Mandelbrot sample in apps/mandelbrot.lhs
+stays in LHS end to end.
+
+Core escape iteration (recursion instead of a loop):
+
+  fn escape(zr: f64, zi: f64, cr: f64, ci: f64, n: i32, maxn: i32) -> i32 {
+      if n >= maxn {
+          return maxn
+      }
+      if zr * zr + zi * zi > 4.0 {
+          return n
+      }
+      let nr = zr * zr - zi * zi + cr
+      let ni = 2.0 * zr * zi + ci
+      escape(nr, ni, cr, ci, n + 1, maxn)
+  }
+
+Run under the interpreter (or add --jit):
+
+  ./target/debug/lhsc run apps/mandelbrot.lhs
+
+Ship the same program:
+
+  ./target/debug/lhsc build apps/mandelbrot.lhs -o mandelbrot
+  ./mandelbrot
+
+The terminal prints an ASCII fractal and a timing line. Same source.
+Standalone binary. No rewrite step.
+
+A second numeric sample, apps/busy_bench.lhs, stresses hot loops and
+task / await. An interactive CLI day planner lives in
+apps/day_planner.lhs and also builds to a standalone executable.
+
+
+How LHS compares (honestly)
+---------------------------
+Julia and Nim already attack the two-language problem with larger
+ecosystems and more users. Rust remains an excellent systems language
+when you need that second language. Python plus C or Rust is still
+how much real work ships.
+
+LHS today is an early MVP. Its strengths are a small surface area, a
+readable toolchain, agent-friendly JSON diagnostics, and a clear path
+from .lhs source to a Linux binary. It is suitable for learning,
+experiments, and early tools — not a drop-in replacement for Python,
+Rust, Julia, or Nim.
+
+For LHS to be truly useful, it should be able to handle most existing
+Python projects. That bar is not met yet. Ordinary Python work often
+needs HTTP, JSON, packages from PyPI, and sometimes a web or desktop
+UI. LHS does not yet cover that ground. Closing that gap — so a
+typical Python program can be brought across or rewritten once in LHS
+and still ship as a native binary — is the measure of whether the
+two-language idea succeeds beyond demos.
+
+
+Try the suite
+-------------
+From the project root:
+
+  ./target/debug/lhsc test examples
+  ./target/debug/lhsc run --jit examples/17_use_math.lhs
+
+User and programmer manuals live in the repo:
+
+  docs/USER_MANUAL.txt
+  docs/PROGRAMMERS_MANUAL.txt
+
+Landing page: https://larrysikes.github.io/lhs/
+Source:       https://github.com/LarrySikes/lhs
+
+
+Closing
+-------
+The two-language problem will not vanish overnight. What LHS offers
+Linux developers today is a compact experiment you can read, run, and
+build on a normal Linux box: write once in .lhs, check and iterate
+with lhsc, then ship a binary when the idea is ready to leave the
+editor. The longer test is harder: for this to be truly useful, LHS
+should handle most existing Python projects. That is the target. The
+Mandelbrot path shows the shape of the answer; the ecosystem work
+ahead decides whether ordinary Python programs can follow it.
+
+
+--------------------------------------------------------------------
+WORD COUNTS (approx.)
+--------------------------------------------------------------------
+Intro (2 paragraphs):  ~170 words
+Full article body:     ~1,150–1,250 words
+Total with intro:      ~1,300–1,400 words
+
+Adjust length for Linux Magazine’s word budget by trimming the
+language-basics section or the comparison section if needed.
+
+
+--------------------------------------------------------------------
+SIDEBAR (optional, if the magazine wants a box)
+--------------------------------------------------------------------
+Quick start
+
+  cargo build -p npc --bin lhsc
+  ./target/debug/lhsc run examples/01_hello.lhs
+  ./target/debug/lhsc build apps/mandelbrot.lhs -o mandelbrot
+  ./mandelbrot
+
+Useful commands: check, run, run --jit, watch, build, fmt, test, lib
+License: MIT OR Apache-2.0

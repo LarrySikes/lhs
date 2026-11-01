@@ -17,6 +17,12 @@ pleasant day-to-day and trustworthy in production.
   not an afterthought.
 - **Agentic:** stable CLI, structured diagnostics, deterministic format
   and tests — so humans supervise agents instead of babysitting output.
+- **Python-scale usefulness:** for LHS to be truly useful, it should be
+  able to handle most existing Python projects (HTTP, JSON, common
+  libraries, typical app shapes) — not only numeric demos. First slice
+  landed: HTTP get/post/request, `json_get`, regex, SQLite `db_*`,
+  `lhsc py-check`, and `apps/weather.lhs`. Loops, web/GUI, and most of
+  PyPI remain gaps; see `docs/PYTHON.md`.
 
 ## Non-goals (v1)
 

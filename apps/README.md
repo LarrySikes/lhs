@@ -20,6 +20,21 @@ cargo run -p npc --bin lhsc -- run apps/busy_bench.lhs
 ./busy_bench
 ```
 
+## Weather (HTTP + JSON — Python weather-app shape)
+
+CLI port of the usual OpenWeatherMap example (no Flask/Tk). Needs `curl`
+and `OPENWEATHER_API_KEY`.
+
+```bash
+export OPENWEATHER_API_KEY=your_key
+CITY=Orlando ./target/debug/lhsc run apps/weather.lhs
+./target/debug/lhsc build apps/weather.lhs -o weather
+./weather London
+```
+
+Scan a Python tree first: `./target/debug/lhsc py-check path/to/py/project`  
+Guide: `docs/PYTHON.md`.
+
 ## Mandelbrot (ASCII fractal — two-language demo)
 
 Float-heavy numeric image. Same story: one language, then ship a binary.

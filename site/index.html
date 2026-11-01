@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>LHS — one language, native speed</title>
-  <meta name="description" content="LHS is a small language for people tired of rewriting Python in Rust. Pleasant to write. Ships as native code. Built for humans and agents." />
+  <meta name="description" content="LHS is a small try at the two-language problem: write the program once, in one language, and still ship a real native program." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet" />
@@ -95,12 +95,12 @@
       font-size: clamp(1.55rem, 3.2vw, 2.15rem);
       line-height: 1.2;
       margin: 0 0 0.85rem;
-      max-width: 18ch;
+      max-width: 22ch;
     }
 
     .lede {
       margin: 0 0 1.75rem;
-      max-width: 34ch;
+      max-width: 38rem;
       color: var(--mute);
       font-size: 1.15rem;
     }
@@ -237,10 +237,11 @@
       <div class="hero-grid">
         <div class="copy-in">
           <p class="brand">LH<span>S</span></p>
-          <h1>Stop rewriting the same program twice.</h1>
+          <h1>One language, not two.</h1>
           <p class="lede">
-            One small language that feels easy day-to-day and ships as native code—
-            with tooling that agents can drive.
+            This is the two-language problem. You write the program in an easy
+            language, then write it again in a fast one. LHS is a small try at
+            one language for both: easy to write, and it builds a real program.
           </p>
           <div class="cta">
             <a class="btn" href="#try">Try it</a>
@@ -263,12 +264,15 @@
     </header>
 
     <section class="wrap" id="why">
-      <h2>Python ease. Native ship.</h2>
+      <h2>The two-language problem</h2>
       <p>
-        Teams bounce between a high-productivity language and a systems language.
-        LHS aims at one coherent toolchain: typed source, fast feedback,
-        <code>lhsc build</code> to natives, Cranelift JIT/AOT when you want speed,
-        and JSON diagnostics for agent loops.
+        Python is easy to write. C or Rust is fast to run. Teams keep both,
+        and they rewrite the same program. That rewrite is the two-language
+        problem. Julia and Nim already work on it at a much larger scale.
+        LHS is smaller. It is an early version you can read and run. It does
+        not replace those languages. What it does today is a clear path:
+        write one <code>.lhs</code> file, and <code>lhsc build</code> makes
+        a standalone program.
       </p>
     </section>
 

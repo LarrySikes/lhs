@@ -33,6 +33,14 @@ lhsc run examples/17_use_math.lhs
 | `getenv` / `argc` / `arg` | process environment |
 | `exit` / `sleep_ms` / `now_ms` | process control / time |
 | `gc` | RC heap free-count |
+| `http_get` | HTTP GET via `curl` → `Result` |
+| `http_post` | HTTP POST JSON body via `curl` |
+| `http_request` | method + headers + body via `curl` |
+| `json_get` | Dotted JSON path → `Option` |
+| `re_find` / `re_replace` | Regex |
+| `db_exec` / `db_query` | SQLite via `sqlite3` CLI |
+
+Python project scan: `lhsc py-check <dir>` — see `docs/PYTHON.md`.
 
 ## Layout
 

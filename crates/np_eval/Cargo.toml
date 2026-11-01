@@ -6,3 +6,5 @@ edition.workspace = true
 [dependencies]
 np_syntax = { path = "../np_syntax" }
 lhs_mem = { path = "../lhs_mem" }
+serde_json = "1"
+regex = "1"

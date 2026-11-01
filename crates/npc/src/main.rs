@@ -30,7 +30,8 @@ fn usage() -> ! {
            lhsc fmt [--write] <file.lhs>\n\
            lhsc test [examples_dir]\n\
            lhsc lib                        # list stdlib modules + builtins\n\
-           lhsc build <file.lhs> [-o outfile] [--emit=c|cranelift]\n\n\
+           lhsc build <file.lhs> [-o outfile] [--emit=c|cranelift]\n\
+           lhsc py-check <dir|file.py>     # scan a Python project for LHS gaps\n\n\
          Modules: `use math` loads stdlib/math.lhs (see docs/PACKAGES.md).\n\
          Language: LHS. Compiler implemented in Rust.\n"
     );
@@ -166,6 +167,14 @@ fn cmd_lib() -> i32 {
         "sleep_ms",
         "now_ms",
         "gc",
+        "http_get",
+        "http_post",
+        "http_request",
+        "json_get",
+        "re_find",
+        "re_replace",
+        "db_exec",
+        "db_query",
     ] {
         println!("  {name}");
     }
@@ -413,6 +422,181 @@ fn cmd_watch(path: &Path, use_jit: bool) -> i32 {
     }
 }
 
+/// Map a top-level Python import to an LHS note.
+fn py_import_status(name: &str) -> (&'static str, &'static str) {
+    match name {
+        "json" => ("partial", "use json_get(doc, \"dotted.path\")"),
+        "urllib" | "urllib.request" | "requests" | "http" | "httpx" => {
+            (
+                "partial",
+                "http_get / http_post / http_request — needs curl on PATH",
+            )
+        }
+        "math" => ("ok", "use math"),
+        "os" => ("partial", "getenv / argc / arg cover a small slice"),
+        "sys" => ("partial", "argc / arg / exit"),
+        "time" => ("partial", "now_ms / sleep_ms"),
+        "typing" | "dataclasses" | "enum" | "abc" => ("rewrite", "use LHS types / structs / ADTs"),
+        "flask" | "django" | "fastapi" | "bottle" | "tornado" => {
+            ("gap", "no web framework — rewrite as CLI or wait for HTTP server")
+        }
+        "tkinter" | "PyQt5" | "PyQt6" | "wx" | "gi" => {
+            ("gap", "no GUI — outside LHS v1 goals")
+        }
+        "numpy" | "pandas" | "scipy" | "sklearn" | "torch" | "tensorflow" => {
+            ("gap", "no numeric stack yet — rewrite hot loops in LHS or call C")
+        }
+        "sqlite3" => ("partial", "db_exec / db_query — needs sqlite3 on PATH"),
+        "sqlalchemy" | "psycopg2" => ("gap", "no ORM / Postgres API yet — use db_* for SQLite"),
+        "re" => ("partial", "re_find / re_replace"),
+        "pathlib" | "shutil" | "glob" => ("partial", "read_file / write_file only"),
+        "threading" | "multiprocessing" | "asyncio" => {
+            ("partial", "task / await — structured, not a drop-in")
+        }
+        "subprocess" | "socket" => ("gap", "not exposed; http_get covers simple GET"),
+        _ => ("unknown", "no mapping — plan a manual port"),
+    }
+}
+
+fn collect_py_files(root: &Path, out: &mut Vec<PathBuf>) {
+    if root.is_file() {
+        if root.extension().and_then(|e| e.to_str()) == Some("py") {
+            out.push(root.to_path_buf());
+        }
+        return;
+    }
+    let Ok(rd) = fs::read_dir(root) else {
+        return;
+    };
+    for ent in rd.flatten() {
+        let p = ent.path();
+        let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
+        if name.starts_with('.') || name == "__pycache__" || name == "env" || name == "venv"
+            || name == ".venv"
+        {
+            continue;
+        }
+        if p.is_dir() {
+            collect_py_files(&p, out);
+        } else if p.extension().and_then(|e| e.to_str()) == Some("py") {
+            out.push(p);
+        }
+    }
+}
+
+fn extract_py_imports(text: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    for line in text.lines() {
+        let t = line.trim();
+        if t.starts_with('#') {
+            continue;
+        }
+        if let Some(rest) = t.strip_prefix("import ") {
+            for part in rest.split(',') {
+                let name = part
+                    .trim()
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("")
+                    .split('.')
+                    .next()
+                    .unwrap_or("")
+                    .trim();
+                if !name.is_empty() {
+                    names.push(name.to_string());
+                }
+            }
+        } else if let Some(rest) = t.strip_prefix("from ") {
+            let name = rest
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .trim_start_matches('.')
+                .split('.')
+                .next()
+                .unwrap_or("")
+                .trim();
+            if !name.is_empty() {
+                names.push(name.to_string());
+            }
+        }
+    }
+    names.sort();
+    names.dedup();
+    names
+}
+
+fn cmd_py_check(target: &Path) -> i32 {
+    if !target.exists() {
+        eprintln!("lhsc py-check: not found: {}", target.display());
+        return 1;
+    }
+    let mut files = Vec::new();
+    collect_py_files(target, &mut files);
+    files.sort();
+    if files.is_empty() {
+        eprintln!("lhsc py-check: no .py files under {}", target.display());
+        return 1;
+    }
+    println!("LHS Python project check");
+    println!("Target: {}", target.display());
+    println!("Python files: {}", files.len());
+    println!();
+    println!("For LHS to be truly useful, it should handle most existing Python");
+    println!("projects. This report shows what this tree needs vs what LHS has.");
+    println!();
+
+    let mut all_imports: Vec<String> = Vec::new();
+    for f in &files {
+        let text = fs::read_to_string(f).unwrap_or_default();
+        for imp in extract_py_imports(&text) {
+            all_imports.push(imp);
+        }
+    }
+    all_imports.sort();
+    all_imports.dedup();
+
+    let mut ok = 0;
+    let mut partial = 0;
+    let mut gap = 0;
+    let mut unknown = 0;
+    let mut rewrite = 0;
+    println!("Imports:");
+    for imp in &all_imports {
+        let (status, note) = py_import_status(imp);
+        match status {
+            "ok" => ok += 1,
+            "partial" => partial += 1,
+            "gap" => gap += 1,
+            "rewrite" => rewrite += 1,
+            _ => unknown += 1,
+        }
+        println!("  [{status:7}] {imp:16}  {note}");
+    }
+    println!();
+    println!(
+        "Summary: {} ok, {} partial, {} rewrite, {} gap, {} unknown",
+        ok, partial, rewrite, gap, unknown
+    );
+    println!();
+    println!("Builtins: http_get/post/request, json_get, re_find/replace,");
+    println!("db_exec/db_query, read_file/write_file, getenv, argc/arg.");
+    println!("Demo: apps/weather.lhs  Guide: docs/PYTHON.md");
+    if gap > 0 || unknown > 0 {
+        println!();
+        println!("Result: not portable as-is — close gaps or rewrite those parts.");
+        2
+    } else if partial > 0 || rewrite > 0 {
+        println!();
+        println!("Result: possible with a manual port of partial/rewrite imports.");
+        0
+    } else {
+        println!();
+        println!("Result: imports look covered — try a manual .lhs port.");
+        0
+    }
+}
+
 #[derive(Clone, Copy)]
 enum EmitMode {
     Embed,
@@ -452,9 +636,10 @@ fn main() {
                 } else if a.starts_with('-') {
                     eprintln!("lhsc: unknown flag {a}");
                     usage();
-                } else {
+                } else if file.is_none() {
                     file = Some(a);
                 }
+                // Further args stay in process argv for argc()/arg().
             }
             let Some(file) = file else { usage() };
             process::exit(cmd_run(Path::new(&file), use_jit));
@@ -498,6 +683,12 @@ fn main() {
             process::exit(cmd_test(Path::new(&dir)));
         }
         "lib" => process::exit(cmd_lib()),
+        "py-check" => {
+            let Some(target) = args.into_iter().next() else {
+                usage();
+            };
+            process::exit(cmd_py_check(Path::new(&target)));
+        }
         "build" => {
             let mut out: Option<String> = None;
             let mut file: Option<String> = None;
