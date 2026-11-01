@@ -1,3 +1,6 @@
+# Author: Larry Sikes
+# Last modified: 2026-11-01
+#
 # 14 — day planner (functional demo, no stdin)
 # Same model as apps/day_planner.lhs: todos by day, list/add/complete, save/load.
 

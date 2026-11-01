@@ -1,3 +1,6 @@
+# Author: Larry Sikes
+# Last modified: 2026-11-01
+#
 # weather — OpenWeatherMap CLI (Python weather-app shape, without Flask/Tk)
 #
 # Needs: curl on PATH, and OPENWEATHER_API_KEY in the environment.

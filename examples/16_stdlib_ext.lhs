@@ -1,3 +1,6 @@
+# Author: Larry Sikes
+# Last modified: 2026-11-01
+#
 # 16 — extended stdlib (env, time, gc)
 
 fn main() {

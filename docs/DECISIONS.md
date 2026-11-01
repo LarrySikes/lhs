@@ -1,3 +1,6 @@
+Author: Larry Sikes
+Last modified: 2026-11-01
+
 # Design decisions (locked for MVP)
 
 Update this file when a choice is deliberate. Prefer changing examples

@@ -1,3 +1,6 @@
+// Author: Larry Sikes
+// Last modified: 2026-11-01
+//
 //! Cranelift backend for an expanded LHS subset.
 //!
 //! - `lhsc run --jit` — in-process JIT

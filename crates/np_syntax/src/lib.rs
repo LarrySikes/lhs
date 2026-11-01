@@ -1,3 +1,6 @@
+// Author: Larry Sikes
+// Last modified: 2026-11-01
+//
 //! Lexer and parser for `.lhs` source. Spec = `examples/`.
 //!
 //! Compiler layout:

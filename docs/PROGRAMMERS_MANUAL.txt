@@ -1,3 +1,6 @@
+Author: Larry Sikes
+Last modified: 2026-11-01
+
 LHS PROGRAMMER'S MANUAL
 =======================
 Audience: people extending LHS programs, the compiler, or the runtime.

@@ -1,3 +1,6 @@
+// Author: Larry Sikes
+// Last modified: 2026-11-01
+//
 //! Name resolution + type checking for `.lhs` programs.
 
 use std::collections::HashMap;

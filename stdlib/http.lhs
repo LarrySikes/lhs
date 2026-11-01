@@ -1,3 +1,6 @@
+# Author: Larry Sikes
+# Last modified: 2026-11-01
+#
 # http — helpers around http_get / http_post / http_request (needs curl)
 
 fn fetch(url: str) {

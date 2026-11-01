@@ -1,3 +1,6 @@
+Author: Larry Sikes
+Last modified: 2026-11-01
+
 # LHS and Python projects
 
 ## Where the source is

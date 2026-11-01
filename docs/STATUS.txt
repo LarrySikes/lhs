@@ -1,3 +1,6 @@
+Author: Larry Sikes
+Last modified: 2026-11-01
+
 LHS STATUS — v0.6 (2026-09-22)
 ================================
 

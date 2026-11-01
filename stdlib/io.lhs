@@ -1,3 +1,6 @@
+# Author: Larry Sikes
+# Last modified: 2026-11-01
+#
 # io — thin wrappers around builtins (stdlib)
 
 fn say(msg: str) {

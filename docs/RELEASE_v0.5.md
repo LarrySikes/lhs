@@ -1,3 +1,6 @@
+Author: Larry Sikes
+Last modified: 2026-11-01
+
 # RELEASE — LHS v0.5 (2026) · hardening complete
 
 ## Highlights

@@ -1,3 +1,6 @@
+// Author: Larry Sikes
+// Last modified: 2026-11-01
+//
 //! C ABI for embedding the LHS interpreter in a native binary (`lhsc build`).
 
 use std::ffi::CStr;

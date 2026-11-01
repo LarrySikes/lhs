@@ -1,3 +1,6 @@
+// Author: Larry Sikes
+// Last modified: 2026-11-01
+//
 //! Shared heap for LHS Cranelift hosts and runtimes (DECISIONS D2).
 //!
 //! Cells and dynamic strings use **reference counting**. A bump region still

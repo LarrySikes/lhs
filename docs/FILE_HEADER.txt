@@ -1,0 +1,29 @@
+Author: Larry Sikes
+Last modified: 2026-11-01
+
+FILE HEADERS (project rule)
+===========================
+Every file we create or substantially rewrite should start with:
+
+  Author: Larry Sikes
+  Last modified: YYYY-MM-DD
+
+Comment forms by file type:
+
+  .lhs / shell-style comments:
+    # Author: Larry Sikes
+    # Last modified: YYYY-MM-DD
+    #
+
+  .txt / .md:
+    Author: Larry Sikes
+    Last modified: YYYY-MM-DD
+
+  .html:
+    <!-- Author: Larry Sikes | Last modified: YYYY-MM-DD -->
+
+  .php / .rs:
+    // Author: Larry Sikes
+    // Last modified: YYYY-MM-DD
+
+Update "Last modified" whenever you change the file.

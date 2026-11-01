@@ -1,3 +1,6 @@
+Author: Larry Sikes
+Last modified: 2026-11-01
+
 # Memory model notes (LHS)
 
 ## Today (v0.5)

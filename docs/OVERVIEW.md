@@ -1,3 +1,6 @@
+Author: Larry Sikes
+Last modified: 2026-11-01
+
 # LHS — system overview (v0.5, 2026)
 
 LHS (“two-language problem” MVP) is a small statically typed language with a

@@ -1,3 +1,6 @@
+# Author: Larry Sikes
+# Last modified: 2026-11-01
+#
 # 22 — SQLite via sqlite3 CLI (db_exec / db_query)
 
 fn main() {

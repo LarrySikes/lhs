@@ -1,3 +1,6 @@
+Author: Larry Sikes
+Last modified: 2026-11-01
+
 # Agent / automation notes — LHS (v0.4 complete, 2026)
 
 ## Commands

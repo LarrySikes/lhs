@@ -1,3 +1,6 @@
+# Author: Larry Sikes
+# Last modified: 2026-11-01
+#
 # mandelbrot — ASCII fractal (two-language demo)
 #
 # Numeric code people often prototype in Python then rewrite in C for speed.

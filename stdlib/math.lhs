@@ -1,3 +1,6 @@
+# Author: Larry Sikes
+# Last modified: 2026-11-01
+#
 # math — small numeric helpers (stdlib)
 
 fn square(n: i32) -> i32 {

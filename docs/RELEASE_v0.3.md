@@ -1,3 +1,6 @@
+Author: Larry Sikes
+Last modified: 2026-11-01
+
 # RELEASE — LHS v0.3 (2026) · complete
 
 ## Highlights

@@ -1,3 +1,6 @@
+Author: Larry Sikes
+Last modified: 2026-11-01
+
 # LHS sample apps
 
 Apps you can **run** or **build into a standalone executable**.

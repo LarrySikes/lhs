@@ -1,3 +1,6 @@
+# Author: Larry Sikes
+# Last modified: 2026-11-01
+#
 # 04 — result and error propagation
 
 fn parse_i32(s: str) -> Result<i32, str> {

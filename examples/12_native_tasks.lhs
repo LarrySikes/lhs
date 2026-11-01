@@ -1,3 +1,6 @@
+# Author: Larry Sikes
+# Last modified: 2026-11-01
+#
 # 12 — native-build friendly helpers
 
 fn double(n: i32) -> i32 {

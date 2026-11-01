@@ -1,3 +1,6 @@
+# Author: Larry Sikes
+# Last modified: 2026-11-01
+#
 # busy_bench — numeric stress (two-language demo)
 #
 # Classic pitch: prototype a hot loop in a friendly language, then rewrite

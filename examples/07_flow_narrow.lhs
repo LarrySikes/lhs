@@ -1,3 +1,6 @@
+# Author: Larry Sikes
+# Last modified: 2026-11-01
+#
 # 07 — flow-sensitive narrowing
 
 fn label(x: Option<i32>) -> str {

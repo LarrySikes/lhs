@@ -1,3 +1,6 @@
+// Author: Larry Sikes
+// Last modified: 2026-11-01
+//
 //! Native packaging for LHS programs.
 //!
 //! Default `lhsc build` embeds source and links `liblhs_rt.a` (full language).

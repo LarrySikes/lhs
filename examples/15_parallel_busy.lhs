@@ -1,3 +1,6 @@
+# Author: Larry Sikes
+# Last modified: 2026-11-01
+#
 # 15 — parallel tasks (same pattern as 08; runs on threads)
 
 fn work(n: i32) -> i32 {

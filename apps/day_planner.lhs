@@ -1,3 +1,6 @@
+# Author: Larry Sikes
+# Last modified: 2026-11-01
+#
 # Perpetual Day Planner (LHS CLI)
 # Mirrors the IWBasic day_planner feature set (no GUI):
 #   - Day / Week / Month schedule views + prev/next/today/goto

@@ -1,0 +1,21 @@
+---
+description: Require Author and Last modified headers on files we create
+alwaysApply: true
+---
+
+# File headers
+
+Every file we create or substantially rewrite must start with author and last-modified metadata.
+
+- Author: Larry Sikes
+- Last modified: YYYY-MM-DD (update on each edit)
+
+Forms:
+
+- `.lhs`: `# Author: Larry Sikes` / `# Last modified: YYYY-MM-DD` / `#`
+- `.txt` / `.md`: plain `Author:` and `Last modified:` lines at the top
+- `.html`: `<!-- Author: Larry Sikes | Last modified: YYYY-MM-DD -->` after `<!DOCTYPE>`
+- `.php`: `// Author: Larry Sikes` and `// Last modified: YYYY-MM-DD` after `<?php`
+- `.rs`: `// Author: Larry Sikes` and `// Last modified: YYYY-MM-DD` at the top
+
+See `docs/FILE_HEADER.txt`.

@@ -1,3 +1,6 @@
+# Author: Larry Sikes
+# Last modified: 2026-11-01
+#
 # 20 — json_get on a fixed document (no network)
 
 fn main() {

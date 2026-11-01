@@ -1,3 +1,6 @@
+# Author: Larry Sikes
+# Last modified: 2026-11-01
+#
 # 03 — option and match (no null)
 
 fn find_digit(s: str, i: i32) -> Option<i32> {

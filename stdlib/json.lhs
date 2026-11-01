@@ -1,3 +1,6 @@
+# Author: Larry Sikes
+# Last modified: 2026-11-01
+#
 # json — thin helpers around json_get
 
 fn show_field(doc: str, path: str) {

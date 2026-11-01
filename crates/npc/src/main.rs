@@ -1,3 +1,8 @@
+// Author: Larry Sikes
+// Last modified: 2026-11-01
+//
+// lhsc — LHS compiler CLI (check / run / build / py-check / …)
+
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};

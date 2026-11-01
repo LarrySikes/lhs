@@ -1,3 +1,6 @@
+Author: Larry Sikes
+Last modified: 2026-11-01
+
 # Packages / stdlib (LHS v0.6)
 
 ## Imports
